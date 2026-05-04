@@ -33,3 +33,12 @@ uv.lock
 scratch/
 *.log
 tmp/
+
+# Claude Code internals
+.claude/
+
+# Project documents and sample files
+Documents/
+*.pdf
+*.docx
+*.pptx
