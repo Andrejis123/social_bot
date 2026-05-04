@@ -80,8 +80,9 @@ def _describe_one(post: dict, run: RunContext) -> None:
 
 
 def _fetch_blobs(media_rows: list[dict], post_ref: str) -> list[MediaBlob]:
+    sampled = _sample_media_rows(media_rows)
     blobs: list[MediaBlob] = []
-    for row in media_rows:
+    for row in sampled:
         path = row.get("storage_path")
         if not path:
             log.warning("describe.media.no_storage_path", post=post_ref, slide=row.get("slide_index"))
@@ -97,3 +98,10 @@ def _fetch_blobs(media_rows: list[dict], post_ref: str) -> list[MediaBlob]:
                 error=str(exc),
             )
     return blobs
+
+
+def _sample_media_rows(rows: list[dict]) -> list[dict]:
+    """Mirror the classifier's pick_for_ai logic: cap carousels at first/middle/last."""
+    if len(rows) <= 3:
+        return rows
+    return [rows[0], rows[len(rows) // 2], rows[-1]]

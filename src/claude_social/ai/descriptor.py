@@ -22,17 +22,22 @@ log = get_logger(__name__)
 _PROMPT = """\
 You are analysing an Instagram post for a social media monitoring report.
 
-Describe this post thoroughly and objectively. Include:
-- What the visual content shows: people, settings, objects, on-screen text, visible branding
-- Any named people, brands, events, places, or products that appear or are mentioned
-- The format and style (e.g. lifestyle photo, flat lay, reel with text overlays, interview video)
-- The apparent message or theme being communicated
+Start with a 1-2 sentence summary capturing the main point — what the post is about \
+and its primary purpose. For example: "This post announces the launch of IQOS's new \
+summer campaign in Prague, inviting followers to visit their pop-up zone at the Brutal \
+Assault festival."
+
+Then describe the post in detail. Include:
+- What each image or slide shows: people, settings, objects, on-screen text, visible branding
+- Any named people, brands, events, places, products, or dates that appear or are mentioned
+- The format and style (e.g. lifestyle photo, reel with text overlays, interview video, mixed carousel)
+- The tone and emotional register (e.g. aspirational, humorous, urgent, inspirational)
 - Any call to action, interactive element, hashtag campaign, or promotional mechanic
 
 Caption: {caption}
 Post type: {post_type}
 
-Be specific and factual. Write 3–5 sentences. Do not classify or judge the content — only describe it.
+Be specific and factual. Do not classify the content — only describe it. Aim for 5-8 sentences total.
 """
 
 
