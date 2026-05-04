@@ -364,6 +364,106 @@ def insert_story(
     return res.data[0]["id"]
 
 
+def list_media_for_story(story_id: str) -> list[dict[str, Any]]:
+    sb = get_supabase()
+    res = (
+        sb.table("story_media")
+        .select("*")
+        .eq("story_id", story_id)
+        .execute()
+    )
+    return res.data or []
+
+
+def update_story_ai(
+    story_id: str,
+    *,
+    category: str,
+    confidence: float | None,
+    reasoning: str | None,
+    prompt_version: str,
+    provider: str,
+) -> None:
+    sb = get_supabase()
+    sb.table("stories").update(
+        {
+            "ai_category": category,
+            "ai_confidence": confidence,
+            "ai_reasoning": reasoning,
+            "ai_prompt_version": prompt_version,
+            "ai_provider": provider,
+            "ai_analyzed_at": datetime.utcnow().isoformat(),
+        }
+    ).eq("id", story_id).execute()
+
+
+def increment_story_ai_attempts(story_id: str, *, error: str) -> int:
+    sb = get_supabase()
+    current = sb.table("stories").select("ai_attempts").eq("id", story_id).single().execute()
+    attempts = (current.data or {}).get("ai_attempts", 0) + 1
+    sb.table("stories").update({
+        "ai_attempts": attempts,
+        "ai_last_error": error[:2000],
+    }).eq("id", story_id).execute()
+    return attempts
+
+
+def find_stories_needing_description(
+    client_slug: str, max_attempts: int = 3
+) -> list[dict[str, Any]]:
+    sb = get_supabase()
+    client_row = sb.table("clients").select("id").eq("slug", client_slug).limit(1).execute()
+    if not client_row.data:
+        return []
+    client_id = client_row.data[0]["id"]
+
+    account_rows = sb.table("accounts").select("id").eq("client_id", client_id).execute()
+    account_ids = [a["id"] for a in (account_rows.data or [])]
+    if not account_ids:
+        return []
+
+    res = (
+        sb.table("stories")
+        .select("id, platform_story_id, caption")
+        .in_("account_id", account_ids)
+        .not_.is_("ai_category", "null")
+        .is_("ai_description", "null")
+        .lt("ai_description_attempts", max_attempts)
+        .order("first_seen_at", desc=False)
+        .limit(200)
+        .execute()
+    )
+    return res.data or []
+
+
+def update_story_description(
+    story_id: str,
+    *,
+    description: str,
+    provider: str,
+) -> None:
+    sb = get_supabase()
+    sb.table("stories").update(
+        {
+            "ai_description": description,
+            "ai_description_at": datetime.utcnow().isoformat(),
+            "ai_provider": provider,
+        }
+    ).eq("id", story_id).execute()
+
+
+def increment_story_description_attempts(story_id: str, *, error: str) -> None:
+    sb = get_supabase()
+    current = sb.table("stories").select("ai_description_attempts").eq("id", story_id).single().execute()
+    attempts = (current.data or {}).get("ai_description_attempts", 0) + 1
+    sb.table("stories").update(
+        {
+            "ai_description_attempts": attempts,
+            "ai_description_error": error[:2000],
+        }
+    ).eq("id", story_id).execute()
+
+
 def insert_story_media(
     *,
     story_id: str,

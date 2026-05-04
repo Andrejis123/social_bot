@@ -31,6 +31,10 @@ scrape-stories client account="":
 describe-posts client sleep="3":
     uv run python -m scripts.describe_posts --client {{client}} --sleep {{sleep}}
 
+# Generate AI descriptions for classified stories.
+describe-stories client sleep="3":
+    uv run python -m scripts.describe_stories --client {{client}} --sleep {{sleep}}
+
 # Scrape + describe (manual full run for one client, all accounts).
 ingest client limit="" since="" until="":
     just scrape-posts {{client}} {{limit}} {{since}} {{until}}
@@ -62,6 +66,10 @@ cron-stories client handle:
     uv run python -m scripts.scrape_stories \
         --client {{client}} --account {{handle}}
 
+# Story descriptions — run per client after each stories scrape cycle.
+cron-describe-stories client:
+    just describe-stories {{client}}
+
 # ---------------------------------------------------------------------------
 # Migrations & checks
 # ---------------------------------------------------------------------------
@@ -70,6 +78,7 @@ cron-stories client handle:
 print-migration:
     @cat migrations/0001_initial_schema.sql
     @cat migrations/0002_add_ai_description.sql
+    @cat migrations/0003_add_stories_ai.sql
 
 # Lint + type check + tests.
 check:

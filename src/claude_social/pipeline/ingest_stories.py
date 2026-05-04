@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+import time
+
 from ..clients import AccountConfig, LoadedClient, load_client
 from ..config import get_settings
 from ..db import queries
@@ -73,13 +75,15 @@ def _ingest_one_account(
                 if existing:
                     # Stories don't get metrics updates — they're either new or known.
                     continue
-                _insert_new_story(
+                story_id = _insert_new_story(
                     story=story,
                     account_id=account_id,
                     client_slug=loaded.slug,
                     handle=account.handle,
                     run=run,
                 )
+                time.sleep(1.5)
+                _maybe_classify_story(loaded, story, story_id, run)
                 run.items_new += 1
             except Exception as exc:
                 run.record_item_error(
@@ -87,6 +91,38 @@ def _ingest_one_account(
                 )
 
         return run.run_id
+
+
+def _maybe_classify_story(
+    loaded: LoadedClient,
+    story: ScrapedStory,
+    story_id: str,
+    run: RunContext,
+) -> None:
+    from ..ai.classifier import classify_story
+
+    try:
+        result = classify_story(story=story, loaded_client=loaded)
+        if result is None:
+            return
+        queries.update_story_ai(
+            story_id,
+            category=result.category,
+            confidence=result.confidence,
+            reasoning=result.reasoning,
+            prompt_version=loaded.config.ai.prompt_version,
+            provider=result.provider,
+        )
+        if result.provider == "openai":
+            run.ai_openai_count += 1
+        else:
+            run.ai_gemini_count += 1
+    except Exception as exc:
+        queries.increment_story_ai_attempts(story_id, error=str(exc))
+        run.items_ai_retry += 1
+        run.record_item_error(
+            story.platform_story_id, stage="ai", message=str(exc)
+        )
 
 
 def _insert_new_story(

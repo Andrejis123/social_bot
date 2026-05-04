@@ -16,7 +16,7 @@ from jinja2 import Environment, StrictUndefined
 
 from ..clients import LoadedClient
 from ..logging import get_logger
-from ..scrapers.base import ScrapedMedia, ScrapedPost
+from ..scrapers.base import ScrapedMedia, ScrapedPost, ScrapedStory
 from .media_sampler import pick_for_ai
 from .providers.gemini import ClassifyResult, MediaBlob, classify_with_gemini
 from .providers.openai import classify_with_openai
@@ -55,6 +55,31 @@ def classify(
         return classify_with_openai(prompt=prompt, media=blobs, categories=categories)
 
 
+def classify_story(
+    *,
+    story: ScrapedStory,
+    loaded_client: LoadedClient,
+) -> ClassifyResult | None:
+    """Classify a story using the same per-client prompt as posts."""
+    provider = loaded_client.config.ai.provider
+    if not loaded_client.prompt_template.strip():
+        log.info("ai.skip.no_prompt", client=loaded_client.slug)
+        return None
+
+    prompt = _render_prompt_for_story(loaded_client, story)
+    blobs = _fetch_media_blobs(story.media)
+    categories = [c.name for c in loaded_client.categories]
+
+    if provider == "openai":
+        return classify_with_openai(prompt=prompt, media=blobs, categories=categories)
+
+    try:
+        return classify_with_gemini(prompt=prompt, media=blobs, categories=categories)
+    except Exception as exc:
+        log.warning("ai.gemini.failed_falling_back_to_openai", error=str(exc))
+        return classify_with_openai(prompt=prompt, media=blobs, categories=categories)
+
+
 # =========================
 # Internals
 # =========================
@@ -71,6 +96,21 @@ def _render_prompt(loaded_client: LoadedClient, post: ScrapedPost) -> str:
         caption=post.caption or "",
         post_type=post.post_type,
         permalink=post.permalink or "",
+        client_name=loaded_client.name,
+    )
+
+
+def _render_prompt_for_story(loaded_client: LoadedClient, story: ScrapedStory) -> str:
+    template = _JINJA.from_string(loaded_client.prompt_template)
+    categories_block = "\n".join(
+        f"- {c.name}: {c.description}" if c.description else f"- {c.name}"
+        for c in loaded_client.categories
+    )
+    return template.render(
+        categories=categories_block,
+        caption=story.caption or "",
+        post_type="story",
+        permalink="",
         client_name=loaded_client.name,
     )
 
