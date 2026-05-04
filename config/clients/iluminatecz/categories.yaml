@@ -1,0 +1,12 @@
+categories:
+  - name: Event content
+    description: Event announcements, aftermovies, recaps, party coverage, or any content tied to a specific event or night.
+
+  - name: Influencer
+    description: Posts featuring celebrity or influencer appearances, collaborations, interviews, or content where a named public figure is the focus.
+
+  - name: Brand promotion
+    description: Product or membership promotion, ticket sales, brand campaigns, or content primarily aimed at driving a commercial action.
+
+  - name: Community
+    description: Audience engagement, polls, Q&A, fan-generated content, or content that invites interaction with followers.

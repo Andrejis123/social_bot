@@ -1,0 +1,17 @@
+# Per-client config. Copy this folder and edit for every new client.
+# The folder name is the canonical `slug` — `slug` below must match.
+
+slug: nasa
+name: "nasa"
+
+accounts:
+  - platform: instagram
+    handle: "nasa"         # (no leading @)
+    is_owned: true         # false = competitor account
+    is_active: true
+
+ai:
+  provider: gemini         # 'gemini' | 'openai'
+  prompt_version: "v1"     # bump when you meaningfully change prompt.md
+  prompt_file: prompt.md
+  categories_file: categories.yaml

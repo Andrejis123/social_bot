@@ -1,0 +1,23 @@
+# Run the pipeline inside Docker.
+#
+# Usage from the repo root:
+#   docker compose -f docker/docker-compose.yml run --rm app \
+#       python -m scripts.scrape_posts --client example_client --limit 5
+#
+# The `app` service is single-shot — when the command finishes, the container
+# exits. For scheduled runs, add a cron sidecar in Phase 2.
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: claude-social:latest
+    env_file:
+      - ../.env
+    # Mount the client-config folder so edits to YAMLs/prompts are picked up
+    # without rebuilding the image.
+    volumes:
+      - ../config:/app/config:ro
+    # No always-on process; prevent accidental restart loops.
+    restart: "no"

@@ -1,0 +1,26 @@
+# Categories available to the AI classifier for this client.
+# Edit freely — these drive what `ai_category` on the `posts` table can be.
+# When you meaningfully change this list, bump `ai.prompt_version` in client.yaml
+# so old/new classifications can be distinguished.
+
+categories:
+  - name: Product Launch
+    description: Announces or features a specific product, service, or release.
+  - name: Giveaway/Contest
+    description: Competitions, prize draws, or giveaways requiring audience participation.
+  - name: Q&A/AMA
+    description: Question and answer sessions, ask-me-anything posts, community questions.
+  - name: Behind the Scenes
+    description: Team moments, process, culture, studio or office content.
+  - name: User Generated Content
+    description: Reposts or features of content made by followers or customers.
+  - name: Promotion/Sale
+    description: Discounts, deals, partnerships, affiliate or sales content.
+  - name: Community/Culture
+    description: Engagement posts — milestones, shout-outs, brand values, cultural moments.
+  - name: News/Announcement
+    description: Company, industry, or event news and announcements.
+  - name: Entertainment
+    description: Humor, memes, trend participation, pure engagement plays.
+  - name: Educational
+    description: Teaches the audience something — tutorials, tips, explainers, facts.

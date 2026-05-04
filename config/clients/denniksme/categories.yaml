@@ -1,0 +1,21 @@
+categories:
+  - name: Domestic Politics
+    description: Slovak government, parliament, elections, political parties, politicians, and domestic policy.
+  - name: World Politics
+    description: International affairs, foreign governments, wars, diplomacy, and geopolitics.
+  - name: Economy & Business
+    description: Markets, companies, economic data, inflation, employment, and financial news.
+  - name: Crime & Justice
+    description: Crime, courts, investigations, corruption, and law enforcement.
+  - name: Sports
+    description: Football, ice hockey, athletics, and any other sports news or results.
+  - name: Science & Technology
+    description: Research, innovation, space, AI, environment, and tech industry news.
+  - name: Culture & Society
+    description: Arts, film, music, lifestyle, social trends, and human interest stories.
+  - name: Health
+    description: Medicine, public health, healthcare policy, and wellness.
+  - name: Breaking News
+    description: Urgent or developing stories that do not yet fit another category cleanly.
+  - name: Opinion & Analysis
+    description: Editorials, commentary, interviews, or analytical pieces rather than straight reporting.

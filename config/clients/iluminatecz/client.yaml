@@ -1,0 +1,14 @@
+slug: iluminatecz
+name: "Iluminatecz"
+
+accounts:
+  - platform: instagram
+    handle: "iluminatecz"
+    is_owned: false
+    is_active: true
+
+ai:
+  provider: gemini
+  prompt_version: "v1"
+  prompt_file: prompt.md
+  categories_file: categories.yaml

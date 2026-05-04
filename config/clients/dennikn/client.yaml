@@ -1,0 +1,14 @@
+slug: dennikn
+name: "Dennik N"
+
+accounts:
+  - platform: instagram
+    handle: "dennikn"
+    is_owned: true
+    is_active: true
+
+ai:
+  provider: gemini
+  prompt_version: "v1"
+  prompt_file: prompt.md
+  categories_file: categories.yaml

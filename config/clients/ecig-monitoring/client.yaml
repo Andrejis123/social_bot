@@ -1,0 +1,29 @@
+slug: ecig-monitoring
+name: "E-Cig Competition Monitoring"
+
+accounts:
+  - platform: instagram
+    handle: "pulzeczech"
+    is_owned: false
+    is_active: true
+
+  - platform: instagram
+    handle: "pulzecz"
+    is_owned: false
+    is_active: true
+
+  - platform: instagram
+    handle: "ploom.cz"
+    is_owned: false
+    is_active: true
+
+  - platform: instagram
+    handle: "iqos_cz"
+    is_owned: false
+    is_active: true
+
+ai:
+  provider: gemini
+  prompt_version: "v1"
+  prompt_file: prompt.md
+  categories_file: categories.yaml

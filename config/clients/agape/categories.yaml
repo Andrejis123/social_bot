@@ -1,0 +1,15 @@
+categories:
+  - name: Events
+    description: Youth camps, retreats, gatherings, concerts, festivals, or outreach events — announcements, previews, or recaps.
+
+  - name: Entertainment
+    description: Fun or creative content with a faith angle — skits, song covers, street interviews or vox pops, humorous reels, or any interactive creative format.
+
+  - name: Devotional
+    description: Scripture, prayer, spiritual reflection, faith teaching, worship content, or any post with a primarily spiritual or theological message.
+
+  - name: Community
+    description: Community life, personal testimonies, volunteer stories, member highlights, or content that showcases the people within the organisation.
+
+  - name: Announcements
+    description: Programme information, registration or sign-up calls, news, or any post primarily communicating practical information to followers.

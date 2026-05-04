@@ -1,0 +1,19 @@
+slug: agape
+name: "Agape Slovakia"
+
+accounts:
+  - platform: instagram
+    handle: "agapeslovensko"
+    is_owned: false
+    is_active: true
+
+  - platform: instagram
+    handle: "agape_bratislava"
+    is_owned: false
+    is_active: true
+
+ai:
+  provider: gemini
+  prompt_version: "v1"
+  prompt_file: prompt.md
+  categories_file: categories.yaml
