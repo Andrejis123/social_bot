@@ -20,13 +20,14 @@ _API = "https://api.telegram.org/bot{token}/sendMessage"
 _TZ = timezone(timedelta(hours=1))  # UTC+1
 
 # Cron schedule: (job_name, client_slug, hour_utc, minute_utc)
+# Posts: weekly Monday. Stories: daily. Times match crontab on VPS.
 _SCHEDULE = [
-    ("ingest_posts",   "dennikn",    18, 0),
-    ("ingest_posts",   "denniksme",  18, 0),
-    ("ingest_stories", "dennikn",    10, 0),
-    ("ingest_stories", "denniksme",  10, 0),
-    ("ingest_stories", "dennikn",    20, 0),
-    ("ingest_stories", "denniksme",  20, 0),
+    ("ingest_posts",   "ecig-monitoring",  6, 50),
+    ("ingest_posts",   "iluminatecz",      7, 20),
+    ("ingest_posts",   "agape",            8,  0),
+    ("ingest_stories", "ecig-monitoring",  9, 30),
+    ("ingest_stories", "iluminatecz",      9, 50),
+    ("ingest_stories", "agape",           10, 15),
 ]
 
 _JOB_LABEL = {
@@ -62,14 +63,19 @@ def notify_run_scheduled(*, job_name: str, client_name: str, platform: str) -> N
     )
 
 
-def notify_run_started(*, run_id: str, job_name: str, client_name: str, platform: str) -> None:
-    send(
-        f"▶️ <b>Run started</b>\n\n"
-        f"Run ID: <code>{run_id[:8]}</code>\n"
-        f"Client: {client_name}\n"
-        f"Platform: {platform.capitalize()}\n"
-        f"Type: {_JOB_LABEL.get(job_name, job_name)}"
-    )
+def notify_run_started(*, run_id: str, job_name: str, client_name: str, platform: str, account: str | None = None) -> None:
+    lines = [
+        f"▶️ <b>Run started</b>\n",
+        f"Run ID: <code>{run_id[:8]}</code>",
+        f"Client: {client_name}",
+    ]
+    if account:
+        lines.append(f"Account: @{account}")
+    lines += [
+        f"Platform: {platform.capitalize()}",
+        f"Type: {_JOB_LABEL.get(job_name, job_name)}",
+    ]
+    send("\n".join(lines))
 
 
 def notify_run_completed(
@@ -86,6 +92,7 @@ def notify_run_completed(
     ai_gemini: int,
     ai_openai: int,
     ai_retry: int,
+    account: str | None = None,
 ) -> None:
     icon = {"success": "✅", "partial": "⚠️", "failed": "❌"}.get(status, "ℹ️")
     job_type = _JOB_LABEL.get(job_name, job_name)
@@ -94,6 +101,10 @@ def notify_run_completed(
         f"{icon} <b>Run completed</b>\n",
         f"Run ID: <code>{run_id[:8]}</code>",
         f"Client: {client_name}",
+    ]
+    if account:
+        lines.append(f"Account: @{account}")
+    lines += [
         f"Platform: {platform.capitalize()}",
         f"Type: {job_type}",
         f"Scraped: {scraped} · New: {new} · Updated: {updated}",

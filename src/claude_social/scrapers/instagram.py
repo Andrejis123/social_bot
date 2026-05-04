@@ -45,9 +45,8 @@ class InstagramScraper:
             since: ISO date string (e.g. "2026-04-27") — only return posts on or after this date.
             until: ISO date string (e.g. "2026-05-03") — only return posts on or before this date.
         """
-        profile_url = _profile_url(handle)
         actor_input: dict[str, Any] = {
-            "directUrls": [profile_url],
+            "usernames": [handle],
             "resultsType": "posts",
             "resultsLimit": limit or 30,
             "addParentData": False,

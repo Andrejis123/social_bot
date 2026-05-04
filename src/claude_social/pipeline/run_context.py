@@ -75,6 +75,7 @@ class RunContext:
                 job_name=self.job_name,
                 client_name=client_name,
                 platform="instagram",
+                account=self.account_handle,
             )
         except Exception as exc:
             log.warning("run.notification_failed", error=str(exc))
@@ -161,6 +162,7 @@ class RunContext:
                 ai_gemini=self.ai_gemini_count,
                 ai_openai=self.ai_openai_count,
                 ai_retry=self.items_ai_retry,
+                account=self.account_handle,
             )
         except Exception as exc:
             log.warning("run.notification_failed", error=str(exc))
