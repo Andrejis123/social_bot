@@ -32,8 +32,19 @@ class InstagramScraper:
     # Posts
     # -------------------------
 
-    def scrape_posts(self, handle: str, limit: int | None = None) -> list[ScrapedPost]:
-        """Run the actor for one profile and normalize each item."""
+    def scrape_posts(
+        self,
+        handle: str,
+        limit: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> list[ScrapedPost]:
+        """Run the actor for one profile and normalize each item.
+
+        Args:
+            since: ISO date string (e.g. "2026-04-27") — only return posts on or after this date.
+            until: ISO date string (e.g. "2026-05-03") — only return posts on or before this date.
+        """
         profile_url = _profile_url(handle)
         actor_input: dict[str, Any] = {
             "directUrls": [profile_url],
@@ -41,6 +52,10 @@ class InstagramScraper:
             "resultsLimit": limit or 30,
             "addParentData": False,
         }
+        if since:
+            actor_input["onlyPostsNewerThan"] = since
+        if until:
+            actor_input["onlyPostsOlderThan"] = until
 
         log.info("apify.run.start", actor=self._actor, handle=handle, limit=limit)
         run = self._client.actor(self._actor).call(run_input=actor_input)

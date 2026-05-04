@@ -19,13 +19,15 @@ log = get_logger(__name__)
 def main(
     client: str = typer.Option(..., "--client", "-c", help="Client slug (folder name)."),
     limit: int | None = typer.Option(None, "--limit", "-n", help="Max posts per account."),
+    since: str | None = typer.Option(None, "--since", help="Only fetch posts on or after this date (YYYY-MM-DD)."),
+    until: str | None = typer.Option(None, "--until", help="Only fetch posts on or before this date (YYYY-MM-DD)."),
     no_ai: bool = typer.Option(
         False, "--no-ai", help="Skip AI classification (useful for debugging)."
     ),
 ) -> None:
     setup_logging()
-    log.info("cli.scrape_posts.start", client=client, limit=limit, no_ai=no_ai)
-    run_ids = ingest_posts_for_client(client, limit=limit, enable_ai=not no_ai)
+    log.info("cli.scrape_posts.start", client=client, limit=limit, since=since, until=until, no_ai=no_ai)
+    run_ids = ingest_posts_for_client(client, limit=limit, since=since, until=until, enable_ai=not no_ai)
     log.info("cli.scrape_posts.done", runs=run_ids)
 
 

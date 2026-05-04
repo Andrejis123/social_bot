@@ -11,17 +11,29 @@ bootstrap:
     uv sync --all-extras
 
 # Run the posts scraper for a client. Usage: `just scrape-posts example_client`
-scrape-posts client limit="":
-    uv run python -m scripts.scrape_posts --client {{client}} {{ if limit != "" { "--limit " + limit } else { "" } }}
+# Optional: since="2026-04-27" until="2026-05-03"
+scrape-posts client limit="" since="" until="":
+    uv run python -m scripts.scrape_posts --client {{client}} \
+        {{ if limit != "" { "--limit " + limit } else { "" } }} \
+        {{ if since != "" { "--since " + since } else { "" } }} \
+        {{ if until != "" { "--until " + until } else { "" } }}
 
 # Generate AI descriptions for classified posts. Usage: `just describe-posts example_client`
 describe-posts client sleep="3":
     uv run python -m scripts.describe_posts --client {{client}} --sleep {{sleep}}
 
 # Scrape posts then immediately generate descriptions (normal weekly flow).
-ingest client limit="":
-    just scrape-posts {{client}} {{limit}}
+ingest client limit="" since="" until="":
+    just scrape-posts {{client}} {{limit}} {{since}} {{until}}
     just describe-posts {{client}}
+
+# Weekly cron targets — one per client, staggered. Called by crontab on the VPS.
+weekly-ecig:
+    just ingest ecig-monitoring "" "$(date -d '8 days ago' +%Y-%m-%d)"
+weekly-iluminatecz:
+    just ingest iluminatecz "" "$(date -d '8 days ago' +%Y-%m-%d)"
+weekly-agape:
+    just ingest agape "" "$(date -d '8 days ago' +%Y-%m-%d)"
 
 # Run the stories scraper for a client.
 scrape-stories client:

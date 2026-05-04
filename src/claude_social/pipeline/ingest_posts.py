@@ -27,6 +27,8 @@ def ingest_posts_for_client(
     slug: str,
     *,
     limit: int | None = None,
+    since: str | None = None,
+    until: str | None = None,
     enable_ai: bool = True,
 ) -> list[str]:
     """
@@ -53,6 +55,8 @@ def ingest_posts_for_client(
             account=account,
             client_id=client_id,
             limit=limit,
+            since=since,
+            until=until,
             enable_ai=enable_ai,
         )
         run_ids.append(run_id)
@@ -66,6 +70,8 @@ def _ingest_one_account(
     account: AccountConfig,
     client_id: str,
     limit: int | None,
+    since: str | None,
+    until: str | None,
     enable_ai: bool,
 ) -> str:
     account_id = queries.upsert_account(
@@ -81,7 +87,7 @@ def _ingest_one_account(
         client_slug=loaded.slug,
         account_handle=account.handle,
     ) as run:
-        posts = scraper.scrape_posts(account.handle, limit=limit)
+        posts = scraper.scrape_posts(account.handle, limit=limit, since=since, until=until)
         run.items_total = len(posts)
 
         for post in posts:
