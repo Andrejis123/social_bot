@@ -1,4 +1,4 @@
-# Task runner for Claude_Social. Install `just` once: `brew install just`.
+# Task runner for Social Bot. Install `just` once: `brew install just`.
 # Run `just` to list tasks.
 
 set dotenv-load := true
@@ -10,36 +10,63 @@ default:
 bootstrap:
     uv sync --all-extras
 
-# Run the posts scraper for a client. Usage: `just scrape-posts example_client`
-# Optional: since="2026-04-27" until="2026-05-03"
-scrape-posts client limit="" since="" until="":
-    uv run python -m scripts.scrape_posts --client {{client}} \
-        {{ if limit != "" { "--limit " + limit } else { "" } }} \
-        {{ if since != "" { "--since " + since } else { "" } }} \
-        {{ if until != "" { "--until " + until } else { "" } }}
+# ---------------------------------------------------------------------------
+# Manual / dev commands
+# ---------------------------------------------------------------------------
 
-# Generate AI descriptions for classified posts. Usage: `just describe-posts example_client`
+# Scrape posts for a client (all accounts). Optional: --account, --since, --until, --limit
+scrape-posts client limit="" since="" until="" account="":
+    uv run python -m scripts.scrape_posts --client {{client}} \
+        {{ if limit   != "" { "--limit "   + limit   } else { "" } }} \
+        {{ if since   != "" { "--since "   + since   } else { "" } }} \
+        {{ if until   != "" { "--until "   + until   } else { "" } }} \
+        {{ if account != "" { "--account " + account } else { "" } }}
+
+# Scrape stories for a client (all accounts). Optional: --account
+scrape-stories client account="":
+    uv run python -m scripts.scrape_stories --client {{client}} \
+        {{ if account != "" { "--account " + account } else { "" } }}
+
+# Generate AI descriptions for classified posts.
 describe-posts client sleep="3":
     uv run python -m scripts.describe_posts --client {{client}} --sleep {{sleep}}
 
-# Scrape posts then immediately generate descriptions (normal weekly flow).
+# Scrape + describe (manual full run for one client, all accounts).
 ingest client limit="" since="" until="":
     just scrape-posts {{client}} {{limit}} {{since}} {{until}}
     just describe-posts {{client}}
 
-# Weekly cron targets — one per client, staggered. Called by crontab on the VPS.
-weekly-ecig:
-    just ingest ecig-monitoring "" "$(date -d '8 days ago' +%Y-%m-%d)"
-weekly-iluminatecz:
-    just ingest iluminatecz "" "$(date -d '8 days ago' +%Y-%m-%d)"
-weekly-agape:
-    just ingest agape "" "$(date -d '8 days ago' +%Y-%m-%d)"
+# One-time backfill from project start (2026-04-27). Run once before cron starts.
+backfill client:
+    just scrape-posts {{client}} "200" "2026-04-27"
+    just describe-posts {{client}}
 
-# Run the stories scraper for a client.
-scrape-stories client:
-    uv run python -m scripts.scrape_stories --client {{client}}
+# ---------------------------------------------------------------------------
+# Cron targets — called directly by crontab on the VPS.
+# --since auto-computes to first day of current month (rolls over automatically).
+# Accounts are scheduled individually to avoid simultaneous Apify calls.
+# ---------------------------------------------------------------------------
 
-# Print the migration SQL so you can paste it into the Supabase SQL editor.
+# Posts — each account is a separate cron entry (see crontab below).
+cron-posts client handle:
+    uv run python -m scripts.scrape_posts \
+        --client {{client}} --account {{handle}} \
+        --since $(date +%Y-%m-01) --limit 200
+
+# Descriptions — run per client after all its accounts have been scraped.
+cron-describe client:
+    just describe-posts {{client}}
+
+# Stories — each account is a separate cron entry (no --since; stories expire in 24h).
+cron-stories client handle:
+    uv run python -m scripts.scrape_stories \
+        --client {{client}} --account {{handle}}
+
+# ---------------------------------------------------------------------------
+# Migrations & checks
+# ---------------------------------------------------------------------------
+
+# Print all migration SQL (paste into Supabase SQL editor).
 print-migration:
     @cat migrations/0001_initial_schema.sql
     @cat migrations/0002_add_ai_description.sql

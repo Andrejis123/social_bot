@@ -29,10 +29,14 @@ def ingest_posts_for_client(
     limit: int | None = None,
     since: str | None = None,
     until: str | None = None,
+    account_handle: str | None = None,
     enable_ai: bool = True,
 ) -> list[str]:
     """
-    Run the posts pipeline for every active account in the given client config.
+    Run the posts pipeline for active accounts in the given client config.
+
+    If account_handle is set, only that account is processed — used by cron
+    entries that schedule each account individually.
 
     Returns the list of run_history IDs created (one per account).
     """
@@ -41,6 +45,8 @@ def ingest_posts_for_client(
 
     run_ids: list[str] = []
     for account in loaded.active_accounts:
+        if account_handle and account.handle != account_handle:
+            continue
         if account.platform != "instagram":
             # Phase 1: only Instagram. Other platforms ignored (not an error).
             log.info(

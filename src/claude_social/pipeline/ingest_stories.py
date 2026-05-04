@@ -24,12 +24,19 @@ from .run_context import RunContext
 log = get_logger(__name__)
 
 
-def ingest_stories_for_client(slug: str) -> list[str]:
+def ingest_stories_for_client(
+    slug: str,
+    *,
+    account_handle: str | None = None,
+) -> list[str]:
+    """If account_handle is set, only that account is processed."""
     loaded = load_client(slug)
     client_id = queries.upsert_client(loaded.slug, loaded.name)
 
     run_ids: list[str] = []
     for account in loaded.active_accounts:
+        if account_handle and account.handle != account_handle:
+            continue
         if account.platform != "instagram":
             continue
         run_ids.append(
