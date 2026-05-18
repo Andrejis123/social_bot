@@ -24,9 +24,13 @@ class InstagramScraper:
     platform = "instagram"
 
     def __init__(self) -> None:
+        import json
         s = get_settings()
         self._client = ApifyClient(s.apify_token)
         self._actor = s.apify_instagram_actor
+        self._cookies: list[dict] | None = (
+            json.loads(s.instagram_cookies) if s.instagram_cookies else None
+        )
 
     # -------------------------
     # Posts
@@ -56,6 +60,8 @@ class InstagramScraper:
             actor_input["onlyPostsNewerThan"] = since
         if until:
             actor_input["onlyPostsOlderThan"] = until
+        if self._cookies:
+            actor_input["loginCookies"] = self._cookies
 
         log.info("apify.run.start", actor=self._actor, handle=handle, limit=limit)
         run = self._client.actor(self._actor).call(run_input=actor_input)

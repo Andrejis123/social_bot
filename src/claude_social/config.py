@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     apify_instagram_actor: str = Field(
         "apify/instagram-scraper", alias="APIFY_INSTAGRAM_ACTOR"
     )
+    instagram_cookies: str | None = Field(None, alias="INSTAGRAM_COOKIES")
 
     # --- AI ---
     gemini_api_key: str | None = Field(None, alias="GEMINI_API_KEY")
