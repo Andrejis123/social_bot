@@ -132,7 +132,7 @@ def get_account_with_client(account_id: str) -> dict[str, Any] | None:
 
 
 def find_posts_needing_description(
-    client_slug: str, max_attempts: int = 3
+    client_slug: str, max_attempts: int = 3, account_handle: str | None = None
 ) -> list[dict[str, Any]]:
     """Return classified posts that don't yet have a description, scoped to one client."""
     sb = get_supabase()
@@ -141,7 +141,10 @@ def find_posts_needing_description(
         return []
     client_id = client_row.data[0]["id"]
 
-    account_rows = sb.table("accounts").select("id").eq("client_id", client_id).execute()
+    q = sb.table("accounts").select("id").eq("client_id", client_id)
+    if account_handle:
+        q = q.eq("handle", account_handle)
+    account_rows = q.execute()
     account_ids = [a["id"] for a in (account_rows.data or [])]
     if not account_ids:
         return []
@@ -409,7 +412,7 @@ def increment_story_ai_attempts(story_id: str, *, error: str) -> int:
 
 
 def find_stories_needing_description(
-    client_slug: str, max_attempts: int = 3
+    client_slug: str, max_attempts: int = 3, account_handle: str | None = None
 ) -> list[dict[str, Any]]:
     sb = get_supabase()
     client_row = sb.table("clients").select("id").eq("slug", client_slug).limit(1).execute()
@@ -417,7 +420,10 @@ def find_stories_needing_description(
         return []
     client_id = client_row.data[0]["id"]
 
-    account_rows = sb.table("accounts").select("id").eq("client_id", client_id).execute()
+    q = sb.table("accounts").select("id").eq("client_id", client_id)
+    if account_handle:
+        q = q.eq("handle", account_handle)
+    account_rows = q.execute()
     account_ids = [a["id"] for a in (account_rows.data or [])]
     if not account_ids:
         return []

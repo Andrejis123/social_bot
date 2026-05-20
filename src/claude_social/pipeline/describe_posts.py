@@ -26,6 +26,7 @@ log = get_logger(__name__)
 def describe_posts_for_client(
     slug: str,
     *,
+    account_handle: str | None = None,
     sleep_between: float = 3.0,
     max_attempts: int = 3,
 ) -> str:
@@ -34,8 +35,8 @@ def describe_posts_for_client(
 
     Returns the run_history ID.
     """
-    with RunContext(job_name="describe_posts", client_slug=slug) as run:
-        posts = queries.find_posts_needing_description(slug, max_attempts=max_attempts)
+    with RunContext(job_name="describe_posts", client_slug=slug, account_handle=account_handle, notify=True) as run:
+        posts = queries.find_posts_needing_description(slug, max_attempts=max_attempts, account_handle=account_handle)
         run.items_total = len(posts)
         log.info("describe.found", count=len(posts), client=slug)
 

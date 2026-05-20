@@ -22,8 +22,8 @@ _TZ = timezone(timedelta(hours=1))  # UTC+1
 _JOB_LABEL = {
     "ingest_posts": "Posts",
     "ingest_stories": "Stories",
-    "describe_posts": "Descriptions",
-    "describe_stories": "Descriptions",
+    "describe_posts": "AI Descriptions",
+    "describe_stories": "AI Descriptions",
 }
 
 

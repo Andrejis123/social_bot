@@ -14,11 +14,13 @@ log = get_logger(__name__)
 @app.command()
 def main(
     client: str = typer.Option(..., "--client", "-c", help="Client slug (folder name)."),
+    account: str = typer.Option("", "--account", "-a", help="Instagram handle to limit to."),
     sleep: float = typer.Option(3.0, "--sleep", "-s", help="Seconds to sleep between AI calls."),
 ) -> None:
     setup_logging()
-    log.info("cli.describe_stories.start", client=client, sleep=sleep)
-    run_id = describe_stories_for_client(client, sleep_between=sleep)
+    handle = account or None
+    log.info("cli.describe_stories.start", client=client, account=handle, sleep=sleep)
+    run_id = describe_stories_for_client(client, account_handle=handle, sleep_between=sleep)
     log.info("cli.describe_stories.done", run_id=run_id)
 
 

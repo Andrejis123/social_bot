@@ -27,13 +27,15 @@ scrape-stories client account="":
     uv run python -m scripts.scrape_stories --client {{client}} \
         {{ if account != "" { "--account " + account } else { "" } }}
 
-# Generate AI descriptions for classified posts.
-describe-posts client sleep="3":
-    uv run python -m scripts.describe_posts --client {{client}} --sleep {{sleep}}
+# Generate AI descriptions for classified posts. Optional: --account
+describe-posts client account="" sleep="3":
+    uv run python -m scripts.describe_posts --client {{client}} --sleep {{sleep}} \
+        {{ if account != "" { "--account " + account } else { "" } }}
 
-# Generate AI descriptions for classified stories.
-describe-stories client sleep="3":
-    uv run python -m scripts.describe_stories --client {{client}} --sleep {{sleep}}
+# Generate AI descriptions for classified stories. Optional: --account
+describe-stories client account="" sleep="3":
+    uv run python -m scripts.describe_stories --client {{client}} --sleep {{sleep}} \
+        {{ if account != "" { "--account " + account } else { "" } }}
 
 # Scrape + describe (manual full run for one client, all accounts).
 ingest client limit="" since="" until="":
