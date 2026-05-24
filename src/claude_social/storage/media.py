@@ -2,10 +2,11 @@
 Download a media URL and upload the file to Supabase Storage.
 
 Path scheme:
-    {client_slug}/{platform}/posts/{YYYY}/{MM}/{post_id}/{slide_index}.{ext}
+    {client_slug}/{handle}/{platform}/posts/{YYYY}/{MM}/{post_id}/{slide_index}.{ext}
 
-This is human-browseable in the Supabase dashboard and makes "give me all of
-Client X's March media" a single prefix query.
+Human-browseable in the Supabase dashboard: drilling into a client folder
+lists each monitored account by handle. "Give me all of @pulzeczech's
+April media" is a single prefix query.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ class UploadedMedia:
 def build_storage_path(
     *,
     client_slug: str,
+    account_handle: str,
     platform: str,
     post_id: str,
     slide_index: int,
@@ -47,7 +49,7 @@ def build_storage_path(
     date = posted_at or datetime.utcnow()
     ext = _guess_extension(source_url, media_type)
     return (
-        f"{client_slug}/{platform}/posts/"
+        f"{client_slug}/{account_handle}/{platform}/posts/"
         f"{date.year:04d}/{date.month:02d}/{post_id}/{slide_index}.{ext}"
     )
 

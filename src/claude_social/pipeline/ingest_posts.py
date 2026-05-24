@@ -165,6 +165,7 @@ def _insert_new_post(
         try:
             path = build_storage_path(
                 client_slug=client_slug,
+                account_handle=handle,
                 platform=post.platform,
                 post_id=post_id,
                 slide_index=media.slide_index,

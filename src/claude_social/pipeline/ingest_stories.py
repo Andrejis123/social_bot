@@ -158,6 +158,7 @@ def _insert_new_story(
         try:
             path = _build_story_storage_path(
                 client_slug=client_slug,
+                account_handle=handle,
                 platform=story.platform,
                 story_id=story_id,
                 media_type=media.media_type,
@@ -187,6 +188,7 @@ def _insert_new_story(
 def _build_story_storage_path(
     *,
     client_slug: str,
+    account_handle: str,
     platform: str,
     story_id: str,
     media_type: str,
@@ -197,7 +199,7 @@ def _build_story_storage_path(
     now = datetime.utcnow()
     ext = _ext_from_url(source_url, media_type)
     return (
-        f"{client_slug}/{platform}/stories/"
+        f"{client_slug}/{account_handle}/{platform}/stories/"
         f"{now.year:04d}/{now.month:02d}/{now.day:02d}/{story_id}.{ext}"
     )
 
