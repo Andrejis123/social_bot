@@ -1,13 +1,23 @@
 """
-Instagram scraper — wraps the Apify `apify/instagram-scraper` actor.
+Instagram scraper — three-tier post fetching.
 
-The actor's output shape is somewhat loose (Apify actors evolve), so we code
+Posts tiering (top to bottom):
+  1. HikerAPI (`api.instagrapi.com`) — managed mobile-private-API SaaS.
+     Auth-first by construction, handles restricted-but-public profiles
+     that the anonymous Apify actor can't see. Active only when
+     `HIKER_API_KEY` is set; on transient/fatal error we fall through.
+  2. `apify/instagram-scraper` — anonymous, cheap, public profiles only.
+  3. `get-leads/all-in-one-instagram-scraper` — authenticated Apify with
+     cookies + IPRoyal residential proxy. Tried only if (2) returns 0
+     items AND `INSTAGRAM_COOKIES` is set.
+
+The two Apify actors' output shapes are loose (they evolve), so we code
 defensively: every field read goes through `.get(...)` and we lean on the
 `raw` dict to preserve anything we didn't map yet.
 
-Posts scraping has a fallback path: if the primary anonymous actor returns
-0 posts and `INSTAGRAM_COOKIES` is set, retry via `get-leads/all-in-one-
-instagram-scraper` (authenticated). Same shape as Gemini→OpenAI fallback.
+Stories scraping is single-tier (`igview-owner/instagram-story-viewer`) —
+HikerAPI's session pool cannot see active stories for accounts it doesn't
+follow; revisit later.
 """
 
 from __future__ import annotations
@@ -19,6 +29,7 @@ from apify_client import ApifyClient
 
 from ..config import get_settings
 from ..logging import get_logger
+from ._hiker_client import HikerClient, HikerFatal, HikerTransient
 from .base import ScrapedMedia, ScrapedPost, ScrapedStory
 
 log = get_logger(__name__)
@@ -48,6 +59,11 @@ class InstagramScraper:
         self._cookies_backup: str | None = s.instagram_cookies_backup
         self._cookie_country_backup: str = s.instagram_cookie_country_backup
         self._residential_proxy_url: str | None = s.residential_proxy_url
+        # HikerAPI top tier. None = not configured → graceful degradation to
+        # the existing Apify-only flow.
+        self._hiker: HikerClient | None = (
+            HikerClient(s.hiker_api_key) if s.hiker_api_key else None
+        )
 
     # -------------------------
     # Posts
@@ -65,6 +81,25 @@ class InstagramScraper:
             since: ISO date string (e.g. "2026-04-27") — only return posts on or after this date.
             until: ISO date string (e.g. "2026-05-03") — only return posts on or before this date.
         """
+        # Tier 1: HikerAPI (top tier, if configured). Trust an empty success
+        # — falling through to Apify on an empty-but-valid response would
+        # waste paid calls AND, while Apify free-tier is exhausted, propagate
+        # ApifyApiError up through the per-account loop and skip downstream
+        # accounts in the same cron run. Only fall through on hiker errors.
+        if self._hiker is not None:
+            try:
+                return self._scrape_posts_hiker(
+                    handle, limit=limit, since=since, until=until
+                )
+            except (HikerTransient, HikerFatal) as exc:
+                log.warning(
+                    "hiker.failed_falling_through",
+                    handle=handle,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+
+        # Tier 2: Apify primary (anonymous, public-only).
         posts, raw_item_count = self._scrape_posts_primary(
             handle, limit=limit, since=since, until=until
         )
@@ -76,8 +111,39 @@ class InstagramScraper:
         if not self._cookies_primary:
             log.info("apify.fallback.skipped_no_cookies", handle=handle)
             return posts
+
+        # Tier 3: Apify cookies+proxy fallback.
         log.info("apify.fallback.triggered", handle=handle, primary_count=0)
         return self._scrape_posts_fallback(handle, limit=limit, since=since, until=until)
+
+    def _scrape_posts_hiker(
+        self,
+        handle: str,
+        limit: int | None,
+        since: str | None,
+        until: str | None,
+    ) -> list[ScrapedPost]:
+        """Fetch posts via HikerAPI. Returns normalized list; may raise Hiker* exceptions."""
+        assert self._hiker is not None  # caller guards on this
+        since_dt = _parse_iso_date(since)
+        until_dt = _parse_iso_date(until)
+        log.info("hiker.scrape.start", handle=handle, limit=limit)
+        raw_items = self._hiker.fetch_user_medias(
+            handle, limit=limit or 30, since_dt=since_dt, until_dt=until_dt
+        )
+        log.info("hiker.scrape.finished", handle=handle, items=len(raw_items))
+
+        posts: list[ScrapedPost] = []
+        for raw in raw_items:
+            try:
+                posts.append(_normalize_post_hiker(raw))
+            except Exception as exc:
+                log.warning(
+                    "hiker.post.normalize_failed",
+                    error=str(exc),
+                    platform_post_id=raw.get("code") or raw.get("pk"),
+                )
+        return posts
 
     def _scrape_posts_primary(
         self,
@@ -476,6 +542,92 @@ def _normalize_post_fallback(
         view_count=raw.get("videoViewCount"),
         play_count=raw.get("videoPlayCount"),
         raw=raw,
+    )
+
+
+def _normalize_post_hiker(raw: dict[str, Any]) -> ScrapedPost:
+    """Normalize a media dict from HikerAPI's /v2/user/medias response.
+
+    Field conventions follow instagrapi's mobile-private-API output:
+      media_type: 1=image, 2=video/reel, 8=carousel
+      product_type: 'clips' (reel) | 'feed' (video) | 'carousel_container'
+      caption: nested {text, ...} — top-level `caption_text` is None on /v2
+      taken_at: Unix epoch seconds
+    """
+    code = raw.get("code") or ""
+    if not code:
+        raise ValueError("media has no code — cannot dedupe")
+
+    media_type = raw.get("media_type")
+    product_type = (raw.get("product_type") or "").lower()
+
+    if media_type == 8 or product_type == "carousel_container":
+        post_type = "carousel"
+    elif media_type == 2:
+        post_type = "reel" if product_type == "clips" else "video"
+    else:
+        post_type = "image"
+
+    if post_type == "carousel":
+        children = raw.get("carousel_media") or []
+        media = [_hiker_media_from_item(c, idx) for idx, c in enumerate(children)]
+        if not media:
+            # Carousel with no children — happens occasionally. Fall back to
+            # the cover image so downstream pipeline still has something.
+            media = [_hiker_media_from_item(raw, 0)]
+    else:
+        media = [_hiker_media_from_item(raw, 0)]
+
+    caption_obj = raw.get("caption")
+    caption = caption_obj.get("text") if isinstance(caption_obj, dict) else None
+
+    return ScrapedPost(
+        platform="instagram",
+        platform_post_id=str(code),
+        post_type=post_type,
+        caption=caption,
+        permalink=f"https://www.instagram.com/p/{code}/",
+        posted_at=_parse_ts(raw.get("taken_at")),
+        media=media,
+        like_count=raw.get("like_count"),
+        comment_count=raw.get("comment_count"),
+        view_count=raw.get("view_count") or raw.get("play_count"),
+        play_count=raw.get("play_count"),
+        raw=raw,
+    )
+
+
+def _hiker_media_from_item(raw: dict[str, Any], slide_index: int) -> ScrapedMedia:
+    """Build a ScrapedMedia from a top-level media or a carousel child.
+
+    Same field shape either way — IG's mobile API uses the same Media model
+    nested under `carousel_media[]`.
+    """
+    is_video = raw.get("media_type") == 2
+
+    if is_video:
+        video_versions = raw.get("video_versions") or []
+        source = ""
+        if video_versions and isinstance(video_versions[0], dict):
+            source = video_versions[0].get("url") or ""
+        if not source:
+            source = raw.get("video_url") or ""
+    else:
+        image_versions2 = raw.get("image_versions2") or {}
+        candidates = image_versions2.get("candidates") or []
+        source = ""
+        if candidates and isinstance(candidates[0], dict):
+            source = candidates[0].get("url") or ""
+        if not source:
+            source = raw.get("thumbnail_url") or ""
+
+    return ScrapedMedia(
+        slide_index=slide_index,
+        media_type="video" if is_video else "image",
+        source_url=source,
+        duration_seconds=raw.get("video_duration") if is_video else None,
+        width=raw.get("original_width"),
+        height=raw.get("original_height"),
     )
 
 

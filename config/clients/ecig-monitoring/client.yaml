@@ -2,26 +2,24 @@ slug: ecig-monitoring
 name: "E-Cig Competition Monitoring"
 
 accounts:
-  # Restricted profile — anonymous-first fallback actor cannot fetch posts even
-  # with cookies + IPRoyal residential proxy. Manual CLI runs via --account
-  # still work for ad-hoc testing. Re-enable post-festival once a working actor
-  # is found (see memory/future_possibilities.md).
+  # Restricted-but-public; the HikerAPI top tier (mobile private API)
+  # resolves these where the anonymous Apify actors couldn't.
   - platform: instagram
     handle: "pulzeczech"
     is_owned: false
-    is_active: false
+    is_active: true
 
-  # Dormant / unreliable — pulled from cron until activity resumes.
+  # Dormant — last post 2023-01-23. Kept inactive to save cron cycles; flip
+  # to true if the account resumes posting.
   - platform: instagram
     handle: "pulzecz"
     is_owned: false
     is_active: false
 
-  # Restricted profile — same blocker as pulzeczech.
   - platform: instagram
     handle: "ploom.cz"
     is_owned: false
-    is_active: false
+    is_active: true
 
   - platform: instagram
     handle: "iqos_cz"

@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # behaviour notes live in .env.example to avoid drift across two places.
     residential_proxy_url: str | None = Field(None, alias="RESIDENTIAL_PROXY_URL")
 
+    # --- HikerAPI (managed instagrapi SaaS, posts only) ---
+    # When set, becomes the top tier for Instagram post fetching. Empty =
+    # legacy Apify-only flow (graceful degradation).
+    hiker_api_key: str | None = Field(None, alias="HIKER_API_KEY")
+
     # --- AI ---
     gemini_api_key: str | None = Field(None, alias="GEMINI_API_KEY")
     gemini_model: str = Field("gemini-2.0-flash", alias="GEMINI_MODEL")
