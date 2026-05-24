@@ -63,17 +63,10 @@ class RunContext:
     def _notify_started(self) -> None:
         try:
             from ..notifications.telegram import notify_run_started
-            from ..clients import load_client
-            client_name = self.client_slug or "unknown"
-            try:
-                loaded = load_client(self.client_slug or "")
-                client_name = loaded.name
-            except Exception:
-                pass
             notify_run_started(
                 run_id=self.run_id,
                 job_name=self.job_name,
-                client_name=client_name,
+                client_name=self.client_slug or "unknown",
                 platform="instagram",
                 account=self.account_handle,
             )
@@ -142,18 +135,11 @@ class RunContext:
     def _send_notification(self, status: str) -> None:
         try:
             from ..notifications.telegram import notify_run_completed
-            from ..clients import load_client
-            client_name = self.client_slug or "unknown"
-            try:
-                loaded = load_client(self.client_slug or "")
-                client_name = loaded.name
-            except Exception:
-                pass
             notify_run_completed(
                 run_id=self.run_id,
                 job_name=self.job_name,
                 client_slug=self.client_slug or "",
-                client_name=client_name,
+                client_name=self.client_slug or "unknown",
                 platform="instagram",
                 status=status,
                 scraped=self.items_total,

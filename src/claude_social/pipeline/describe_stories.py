@@ -26,7 +26,7 @@ def describe_stories_for_client(
     sleep_between: float = 3.0,
     max_attempts: int = 3,
 ) -> str:
-    with RunContext(job_name="describe_stories", client_slug=slug, account_handle=account_handle, notify=True) as run:
+    with RunContext(job_name="describe_stories", client_slug=slug, account_handle=account_handle) as run:
         stories = queries.find_stories_needing_description(slug, max_attempts=max_attempts, account_handle=account_handle)
         run.items_total = len(stories)
         log.info("describe_stories.found", count=len(stories), client=slug)

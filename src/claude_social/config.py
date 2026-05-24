@@ -35,7 +35,17 @@ class Settings(BaseSettings):
     apify_instagram_actor: str = Field(
         "apify/instagram-scraper", alias="APIFY_INSTAGRAM_ACTOR"
     )
+    apify_instagram_fallback_actor: str = Field(
+        "get-leads/all-in-one-instagram-scraper",
+        alias="APIFY_INSTAGRAM_FALLBACK_ACTOR",
+    )
     instagram_cookies: str | None = Field(None, alias="INSTAGRAM_COOKIES")
+    instagram_cookie_country: str = Field("SK", alias="INSTAGRAM_COOKIE_COUNTRY")
+    instagram_cookies_backup: str | None = Field(None, alias="INSTAGRAM_COOKIES_BACKUP")
+    instagram_cookie_country_backup: str = Field("SK", alias="INSTAGRAM_COOKIE_COUNTRY_BACKUP")
+    # External residential proxy URL (provider-agnostic). Detailed format /
+    # behaviour notes live in .env.example to avoid drift across two places.
+    residential_proxy_url: str | None = Field(None, alias="RESIDENTIAL_PROXY_URL")
 
     # --- AI ---
     gemini_api_key: str | None = Field(None, alias="GEMINI_API_KEY")

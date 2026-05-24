@@ -43,10 +43,15 @@ def ingest_posts_for_client(
     loaded = load_client(slug)
     client_id = queries.upsert_client(loaded.slug, loaded.name)
 
+    # Explicit --account override scrapes that handle regardless of is_active —
+    # is_active gates cron, not manual CLI targeting.
+    if account_handle:
+        accounts = [a for a in loaded.config.accounts if a.handle == account_handle]
+    else:
+        accounts = loaded.active_accounts
+
     run_ids: list[str] = []
-    for account in loaded.active_accounts:
-        if account_handle and account.handle != account_handle:
-            continue
+    for account in accounts:
         if account.platform != "instagram":
             # Phase 1: only Instagram. Other platforms ignored (not an error).
             log.info(

@@ -4,6 +4,10 @@ Instagram scraper — wraps the Apify `apify/instagram-scraper` actor.
 The actor's output shape is somewhat loose (Apify actors evolve), so we code
 defensively: every field read goes through `.get(...)` and we lean on the
 `raw` dict to preserve anything we didn't map yet.
+
+Posts scraping has a fallback path: if the primary anonymous actor returns
+0 posts and `INSTAGRAM_COOKIES` is set, retry via `get-leads/all-in-one-
+instagram-scraper` (authenticated). Same shape as Gemini→OpenAI fallback.
 """
 
 from __future__ import annotations
@@ -19,18 +23,31 @@ from .base import ScrapedMedia, ScrapedPost, ScrapedStory
 
 log = get_logger(__name__)
 
+# Items the fallback actor emits in its dataset alongside profile records.
+# Filtered out so they don't get treated as post data.
+_FALLBACK_NON_PROFILE_RESULT_TYPES = frozenset(
+    {"quality_report", "bandwidth_report", "input_validation_error", "info"}
+)
+
 
 class InstagramScraper:
     platform = "instagram"
 
     def __init__(self) -> None:
-        import json
         s = get_settings()
         self._client = ApifyClient(s.apify_token)
         self._actor = s.apify_instagram_actor
-        self._cookies: list[dict] | None = (
-            json.loads(s.instagram_cookies) if s.instagram_cookies else None
-        )
+        self._fallback_actor = s.apify_instagram_fallback_actor
+        # Primary + optional backup cookies for the fallback actor. Cookies are
+        # raw JSON strings (the actor accepts that format directly). Each cookie
+        # has its own admission-gate quota in the actor (keyed by cookieHash),
+        # so the backup is a hot spare: try primary first, fall through to
+        # backup on admission-gate denial or cookie-expired errors.
+        self._cookies_primary: str | None = s.instagram_cookies
+        self._cookie_country_primary: str = s.instagram_cookie_country
+        self._cookies_backup: str | None = s.instagram_cookies_backup
+        self._cookie_country_backup: str = s.instagram_cookie_country_backup
+        self._residential_proxy_url: str | None = s.residential_proxy_url
 
     # -------------------------
     # Posts
@@ -43,12 +60,33 @@ class InstagramScraper:
         since: str | None = None,
         until: str | None = None,
     ) -> list[ScrapedPost]:
-        """Run the actor for one profile and normalize each item.
-
+        """
         Args:
             since: ISO date string (e.g. "2026-04-27") — only return posts on or after this date.
             until: ISO date string (e.g. "2026-05-03") — only return posts on or before this date.
         """
+        posts, raw_item_count = self._scrape_posts_primary(
+            handle, limit=limit, since=since, until=until
+        )
+        # Gate fallback on the primary actor's raw item count, not on normalized
+        # posts — otherwise a normalizer bug would silently trigger a paid
+        # fallback run even though the primary actor delivered data.
+        if raw_item_count > 0:
+            return posts
+        if not self._cookies_primary:
+            log.info("apify.fallback.skipped_no_cookies", handle=handle)
+            return posts
+        log.info("apify.fallback.triggered", handle=handle, primary_count=0)
+        return self._scrape_posts_fallback(handle, limit=limit, since=since, until=until)
+
+    def _scrape_posts_primary(
+        self,
+        handle: str,
+        limit: int | None,
+        since: str | None,
+        until: str | None,
+    ) -> tuple[list[ScrapedPost], int]:
+        """Returns (normalized posts, raw item count from the actor dataset)."""
         profile_url = _profile_url(handle)
         actor_input: dict[str, Any] = {
             "directUrls": [profile_url],
@@ -60,14 +98,12 @@ class InstagramScraper:
             actor_input["onlyPostsNewerThan"] = since
         if until:
             actor_input["onlyPostsOlderThan"] = until
-        if self._cookies:
-            actor_input["loginCookies"] = self._cookies
 
         log.info("apify.run.start", actor=self._actor, handle=handle, limit=limit)
         run = self._client.actor(self._actor).call(run_input=actor_input)
         if not run:
             log.error("apify.run.no_run_returned", handle=handle)
-            return []
+            return [], 0
 
         dataset_id = run["defaultDatasetId"]
         items = list(self._client.dataset(dataset_id).iterate_items())
@@ -83,7 +119,157 @@ class InstagramScraper:
                     error=str(exc),
                     platform_post_id=raw.get("id") or raw.get("shortCode"),
                 )
+        return posts, len(items)
+
+    def _scrape_posts_fallback(
+        self,
+        handle: str,
+        limit: int | None,
+        since: str | None,
+        until: str | None,
+    ) -> list[ScrapedPost]:
+        posts, gate_denied = self._call_fallback_actor(
+            handle, limit, since, until,
+            cookies=self._cookies_primary,
+            cookie_country=self._cookie_country_primary,
+            cookie_label="primary",
+        )
+        if posts:
+            return posts
+        if not gate_denied:
+            # No admission-gate error — primary cookie just didn't find the
+            # account. Backup cookie won't help (same account-level visibility).
+            return posts
+        if not self._cookies_backup:
+            log.info("apify.fallback.no_backup_cookie", handle=handle)
+            return posts
+        log.info("apify.fallback.retry_backup_cookie", handle=handle)
+        posts, _ = self._call_fallback_actor(
+            handle, limit, since, until,
+            cookies=self._cookies_backup,
+            cookie_country=self._cookie_country_backup,
+            cookie_label="backup",
+        )
         return posts
+
+    def _call_fallback_actor(
+        self,
+        handle: str,
+        limit: int | None,
+        since: str | None,
+        until: str | None,
+        *,
+        cookies: str | None,
+        cookie_country: str,
+        cookie_label: str,
+    ) -> tuple[list[ScrapedPost], bool]:
+        """Returns (posts, gate_denied). gate_denied=True signals the caller
+        to retry with the backup cookie (admission-gate is per-cookie)."""
+        actor_input: dict[str, Any] = {
+            "scrapeMode": "instagram-profile-scraper",
+            "profiles": [handle],
+            "maxPostsPerProfile": min(limit or 30, 100),
+            "loginCookies": cookies,
+            "cookieCountry": cookie_country,
+        }
+
+        if self._residential_proxy_url:
+            # External residential proxy (e.g. IPRoyal) — the country must
+            # already be encoded in the URL (e.g. IPRoyal puts it in the
+            # password as `pass_country-ie`). Passed to the actor as a custom
+            # proxy URL; Apify's plan restrictions don't apply because the
+            # proxy host isn't proxy.apify.com.
+            actor_input["proxyTier"] = "custom"
+            actor_input["proxyConfiguration"] = {
+                "proxyUrls": [self._residential_proxy_url]
+            }
+            proxy_label = f"residential-{cookie_country}"
+        else:
+            actor_input["proxyTier"] = "none"
+            proxy_label = "none"
+
+        log.info(
+            "apify.fallback.start",
+            actor=self._fallback_actor,
+            handle=handle,
+            cookie=cookie_label,
+            proxy=proxy_label,
+        )
+        run = self._client.actor(self._fallback_actor).call(run_input=actor_input)
+        if not run:
+            log.error("apify.fallback.no_run_returned", handle=handle, cookie=cookie_label)
+            return [], False
+
+        dataset_id = run["defaultDatasetId"]
+        items = list(self._client.dataset(dataset_id).iterate_items())
+
+        profile_items: list[dict[str, Any]] = []
+        gate_errors: list[dict[str, Any]] = []
+        for it in items:
+            rt = it.get("resultType")
+            if rt == "input_validation_error":
+                gate_errors.append(it)
+            elif rt not in _FALLBACK_NON_PROFILE_RESULT_TYPES and not it.get("_message"):
+                profile_items.append(it)
+
+        if gate_errors:
+            for err in gate_errors:
+                log.warning(
+                    "apify.fallback.admission_gate",
+                    handle=handle,
+                    cookie=cookie_label,
+                    errors=err.get("errors"),
+                )
+            return [], True
+
+        log.info(
+            "apify.fallback.finished",
+            handle=handle,
+            cookie=cookie_label,
+            profiles=len(profile_items),
+        )
+
+        # Pre-parse the window bounds once — the inner loop runs once per post.
+        since_dt = _parse_iso_date(since)
+        until_dt = _parse_iso_date(until)
+
+        posts: list[ScrapedPost] = []
+        seen_ids: set[str] = set()
+        for profile in profile_items:
+            # Iterate both latestPosts and latestReels — reels are a separate
+            # array in this actor's profile mode, and IG's posts tab includes
+            # reels too, so dedupe by platform_post_id to be safe.
+            combined = (profile.get("latestPosts") or []) + (profile.get("latestReels") or [])
+            for raw_post in combined:
+                post_id = raw_post.get("postId") or raw_post.get("shortCode") or ""
+                if post_id and post_id in seen_ids:
+                    continue
+                posted_at = _parse_ts(raw_post.get("timestamp"))
+                if _ts_outside_window(posted_at, since=since_dt, until=until_dt):
+                    continue
+                try:
+                    normalized = _normalize_post_fallback(raw_post, posted_at=posted_at)
+                    if normalized.post_type == "carousel":
+                        log.info(
+                            "apify.fallback.carousel_single_slide",
+                            post_id=normalized.platform_post_id,
+                        )
+                    posts.append(normalized)
+                    if post_id:
+                        seen_ids.add(post_id)
+                except Exception as exc:
+                    log.warning(
+                        "apify.fallback.post.normalize_failed",
+                        error=str(exc),
+                        platform_post_id=raw_post.get("postId") or raw_post.get("shortCode"),
+                    )
+        log.info(
+            "apify.fallback.normalized",
+            handle=handle,
+            cookie=cookie_label,
+            posts=len(posts),
+        )
+        return posts, False
 
     # -------------------------
     # Stories
@@ -207,6 +393,88 @@ def _normalize_post(raw: dict[str, Any]) -> ScrapedPost:
         comment_count=raw.get("commentsCount"),
         view_count=raw.get("videoViewCount") or raw.get("viewCount"),
         play_count=raw.get("videoPlayCount") or raw.get("playCount"),
+        raw=raw,
+    )
+
+
+def _parse_iso_date(value: str | None) -> datetime | None:
+    """Parse an ISO date string for window comparisons. Returns None if absent or invalid."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _ts_outside_window(
+    ts: datetime | None,
+    *,
+    since: datetime | None,
+    until: datetime | None,
+) -> bool:
+    # Unknown timestamps are treated as in-window: the caller has already
+    # decided this is a candidate post; dropping it for a parse failure
+    # would be a silent data loss.
+    if ts is None:
+        return False
+    if since is not None and ts < since:
+        return True
+    if until is not None and ts > until:
+        return True
+    return False
+
+
+def _normalize_post_fallback(
+    raw: dict[str, Any],
+    *,
+    posted_at: datetime | None,
+) -> ScrapedPost:
+    """Normalize a post from `get-leads/all-in-one-instagram-scraper`'s profile mode."""
+    # TODO: latestPosts items don't include carousel children — for
+    # Sidecar/Carousel posts we capture only the cover frame. If we need
+    # full slides on the fallback path, add a follow-up call via
+    # `scrapeMode: instagram-post-scraper` keyed on shortCode.
+    platform_post_id = (
+        raw.get("postId") or raw.get("shortCode") or raw.get("shortcode") or ""
+    )
+    if not platform_post_id:
+        raise ValueError("post has no postId / shortCode — cannot dedupe")
+
+    media_type_raw = (raw.get("mediaType") or "").lower()
+    if media_type_raw in {"sidecar", "carousel", "carousel_album"}:
+        post_type = "carousel"
+    elif media_type_raw == "video" or raw.get("videoUrl"):
+        post_type = "reel" if (raw.get("videoPlayCount") or raw.get("videoViewCount")) else "video"
+    else:
+        post_type = "image"
+
+    is_video = post_type in {"video", "reel"} or bool(raw.get("videoUrl"))
+    source = raw.get("videoUrl") or raw.get("displayUrl") or ""
+    dims = raw.get("dimensions") or {}
+    media = [
+        ScrapedMedia(
+            slide_index=0,
+            media_type="video" if is_video else "image",
+            source_url=source,
+            duration_seconds=raw.get("videoDuration"),
+            width=dims.get("width"),
+            height=dims.get("height"),
+        )
+    ]
+
+    return ScrapedPost(
+        platform="instagram",
+        platform_post_id=str(platform_post_id),
+        post_type=post_type,
+        caption=raw.get("caption"),
+        permalink=raw.get("url"),
+        posted_at=posted_at,
+        media=media,
+        like_count=raw.get("likesCount"),
+        comment_count=raw.get("commentsCount"),
+        view_count=raw.get("videoViewCount"),
+        play_count=raw.get("videoPlayCount"),
         raw=raw,
     )
 

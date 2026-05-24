@@ -35,7 +35,7 @@ def describe_posts_for_client(
 
     Returns the run_history ID.
     """
-    with RunContext(job_name="describe_posts", client_slug=slug, account_handle=account_handle, notify=True) as run:
+    with RunContext(job_name="describe_posts", client_slug=slug, account_handle=account_handle) as run:
         posts = queries.find_posts_needing_description(slug, max_attempts=max_attempts, account_handle=account_handle)
         run.items_total = len(posts)
         log.info("describe.found", count=len(posts), client=slug)

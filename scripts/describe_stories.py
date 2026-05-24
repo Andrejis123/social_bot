@@ -18,9 +18,8 @@ def main(
     sleep: float = typer.Option(3.0, "--sleep", "-s", help="Seconds to sleep between AI calls."),
 ) -> None:
     setup_logging()
-    handle = account or None
-    log.info("cli.describe_stories.start", client=client, account=handle, sleep=sleep)
-    run_id = describe_stories_for_client(client, account_handle=handle, sleep_between=sleep)
+    log.info("cli.describe_stories.start", client=client, account=account or None, sleep=sleep)
+    run_id = describe_stories_for_client(client, account_handle=account or None, sleep_between=sleep)
     log.info("cli.describe_stories.done", run_id=run_id)
 
 

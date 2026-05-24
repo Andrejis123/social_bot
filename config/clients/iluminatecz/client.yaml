@@ -2,10 +2,13 @@ slug: iluminatecz
 name: "Iluminatecz"
 
 accounts:
+  # Handle appeared "unavailable" in incognito earlier — treating as restricted
+  # alongside the ecig-monitoring restricted accounts. Re-enable when verified
+  # public or when a working actor for restricted profiles is found.
   - platform: instagram
     handle: "iluminatecz"
     is_owned: false
-    is_active: true
+    is_active: false
 
 ai:
   provider: gemini

@@ -27,6 +27,10 @@ _JOB_LABEL = {
 }
 
 
+def _label(job_name: str) -> str:
+    return _JOB_LABEL.get(job_name, job_name)
+
+
 def send(text: str) -> None:
     """Send an HTML-formatted message. Silently no-ops if not configured."""
     settings = get_settings()
@@ -53,7 +57,7 @@ def notify_run_started(
     platform: str,
     account: str | None = None,
 ) -> None:
-    label = _JOB_LABEL.get(job_name, job_name)
+    label = _label(job_name)
     handle = f"@{account}" if account else client_name
     send(
         f"▶️ <b>Run started</b>\n\n"
@@ -78,7 +82,7 @@ def notify_run_completed(
     account: str | None = None,
 ) -> None:
     icon = {"success": "✅", "partial": "⚠️", "failed": "❌"}.get(status, "ℹ️")
-    label = _JOB_LABEL.get(job_name, job_name)
+    label = _label(job_name)
     handle = f"@{account}" if account else client_name
 
     lines = [
@@ -102,7 +106,7 @@ def notify_run_completed(
 
 
 def notify_run_scheduled(*, job_name: str, client_name: str, platform: str) -> None:
-    label = _JOB_LABEL.get(job_name, job_name)
+    label = _label(job_name)
     send(f"🕐 <b>Run scheduled in 1 min</b> · {client_name} · {label}")
 
 
