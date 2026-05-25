@@ -85,10 +85,18 @@ def notify_run_completed(
     label = _label(job_name)
     handle = f"@{account}" if account else client_name
 
+    # Describe jobs don't scrape and never increment `updated` — relabel so
+    # the same counters read sensibly. items_total = queue size found in DB,
+    # items_new = how many got newly described.
+    if job_name in ("describe_posts", "describe_stories"):
+        counters_line = f"Found: {scraped} · Described: {new}"
+    else:
+        counters_line = f"Scraped: {scraped} · New: {new} · Updated: {updated}"
+
     lines = [
         f"{icon} <b>Run completed</b>\n",
         f"<code>{run_id[:8]}</code> · {handle} · {label}",
-        f"Scraped: {scraped} · New: {new} · Updated: {updated}",
+        counters_line,
     ]
 
     if job_name in ("ingest_posts", "ingest_stories") and (ai_gemini + ai_openai + ai_retry) > 0:
