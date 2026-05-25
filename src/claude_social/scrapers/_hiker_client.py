@@ -107,23 +107,16 @@ class HikerClient:
         in v2 (instagrapi-v2) shape. Empty list = no active stories (NOT an
         error). Caller is responsible for supplying `user_id`.
         """
-        data = self._get("/v2/user/stories/by/id", params={"user_id": user_id})
-        # v2 response shapes seen in the wild:
-        #   {"response": {"reels": [item, ...]}}
-        #   {"response": {"items": [item, ...]}}
-        #   {"response": [item, ...]}
-        # Fall through tolerantly — empty list on anything unexpected.
-        if isinstance(data, list):
-            return data
+        data = self._get("/v2/user/stories", params={"user_id": user_id})
+        # v2 shape:
+        #   {"broadcast": ..., "reel": {"items": [...], ...} | null, "status": "ok"}
+        # `reel == null` means no active stories — return empty list.
         if isinstance(data, dict):
-            resp = data.get("response", data)
-            if isinstance(resp, list):
-                return resp
-            if isinstance(resp, dict):
-                for key in ("reels", "items", "stories"):
-                    val = resp.get(key)
-                    if isinstance(val, list):
-                        return val
+            reel = data.get("reel")
+            if isinstance(reel, dict):
+                items = reel.get("items")
+                if isinstance(items, list):
+                    return items
         return []
 
     def lookup_user_id(self, handle: str) -> str:
