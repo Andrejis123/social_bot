@@ -44,7 +44,8 @@ def test_reel_from_agapeslovensko():
     post = _normalize_post_hiker(item)
 
     assert post.platform == "instagram"
-    assert post.platform_post_id == "DWjOrfjk1gc"
+    assert post.platform_post_id == "3864997466685528092"
+    assert post.permalink == "https://www.instagram.com/p/DWjOrfjk1gc/"
     assert post.post_type == "reel"
     assert post.permalink == "https://www.instagram.com/p/DWjOrfjk1gc/"
     assert post.like_count == 352
@@ -63,7 +64,7 @@ def test_single_image_from_pulzeczech():
     item = _find_by_code(_load_items("hiker_medias_pulzeczech.json"), "DYhI0vbDAnn")
     post = _normalize_post_hiker(item)
 
-    assert post.platform_post_id == "DYhI0vbDAnn"
+    assert post.platform_post_id == "3900437560984078823"
     assert post.post_type == "image"
     assert post.like_count == 15
     assert post.comment_count == 2
@@ -78,7 +79,7 @@ def test_carousel_3_children_from_pulzeczech():
     item = _find_by_code(_load_items("hiker_medias_pulzeczech.json"), "DVtiZx5jR7u")
     post = _normalize_post_hiker(item)
 
-    assert post.platform_post_id == "DVtiZx5jR7u"
+    assert post.platform_post_id == "3849884561618837230"
     assert post.post_type == "carousel"
 
     assert len(post.media) == 3
@@ -118,6 +119,12 @@ def test_taken_at_is_parsed_from_epoch():
 # -------------------------
 
 
+def test_missing_pk_raises():
+    raw = {"code": "ABC", "media_type": 1, "image_versions2": {"candidates": [{"url": "x"}]}}
+    with pytest.raises(ValueError, match="no pk"):
+        _normalize_post_hiker(raw)
+
+
 def test_missing_code_raises():
     raw = {"pk": "123", "media_type": 1, "image_versions2": {"candidates": [{"url": "x"}]}}
     with pytest.raises(ValueError, match="no code"):
@@ -128,6 +135,7 @@ def test_video_url_fallback_when_no_video_versions():
     # If video_versions is missing or empty, fall through to top-level video_url.
     raw = {
         "code": "ABC123",
+        "pk": "1000000000000000001",
         "media_type": 2,
         "product_type": "feed",  # video, not reel
         "video_url": "https://cdn.example/fallback.mp4",
@@ -147,6 +155,7 @@ def test_video_url_fallback_when_no_video_versions():
 def test_thumbnail_url_fallback_for_image_without_versions():
     raw = {
         "code": "IMG1",
+        "pk": "1000000000000000002",
         "media_type": 1,
         "product_type": "feed",
         "thumbnail_url": "https://cdn.example/thumb.jpg",
@@ -162,6 +171,7 @@ def test_carousel_with_empty_children_falls_back_to_cover():
     # Edge case: media_type=8 but carousel_media is empty.
     raw = {
         "code": "EMPTY_CAROUSEL",
+        "pk": "1000000000000000003",
         "media_type": 8,
         "product_type": "carousel_container",
         "carousel_media": [],
@@ -178,6 +188,7 @@ def test_carousel_with_empty_children_falls_back_to_cover():
 def test_view_count_falls_back_to_play_count():
     raw = {
         "code": "VIEW1",
+        "pk": "1000000000000000004",
         "media_type": 2,
         "product_type": "clips",
         "video_url": "https://cdn.example/v.mp4",

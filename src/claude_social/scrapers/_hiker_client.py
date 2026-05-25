@@ -150,21 +150,22 @@ class HikerClient:
             response = data.get("response") if isinstance(data, dict) else None
             items = (response or {}).get("items") or []
 
+            # Skip too-old items but keep paginating through the page —
+            # IG mobile feed often returns pinned (older-dated) posts as
+            # the FIRST items on page 1, which breaks a "stop on first
+            # too-old" heuristic. We only stop paginating when an entire
+            # page has zero items in the window.
+            page_had_in_window = False
             for it in items:
                 ts = it.get("taken_at")
                 if ts is not None:
                     dt = _ts_to_datetime(ts)
                     if dt is not None:
                         if until_dt is not None and dt > until_dt:
-                            continue  # skip too-new but keep paginating
+                            continue
                         if since_dt is not None and dt < since_dt:
-                            # Newest-first ordering — done.
-                            log.info(
-                                "hiker.pagination.stop_since",
-                                pages_fetched=page_idx + 1,
-                                collected=len(collected),
-                            )
-                            return collected
+                            continue
+                page_had_in_window = True
                 collected.append(it)
                 if len(collected) >= limit:
                     log.info(
@@ -173,6 +174,14 @@ class HikerClient:
                         collected=len(collected),
                     )
                     return collected
+
+            if since_dt is not None and items and not page_had_in_window:
+                log.info(
+                    "hiker.pagination.stop_since",
+                    pages_fetched=page_idx + 1,
+                    collected=len(collected),
+                )
+                return collected
 
             if not (response or {}).get("more_available"):
                 log.info(

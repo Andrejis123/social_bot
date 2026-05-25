@@ -648,8 +648,11 @@ def _normalize_post_hiker(raw: dict[str, Any]) -> ScrapedPost:
       taken_at: Unix epoch seconds
     """
     code = raw.get("code") or ""
+    pk = raw.get("pk") or ""
+    if not pk:
+        raise ValueError("media has no pk — cannot dedupe")
     if not code:
-        raise ValueError("media has no code — cannot dedupe")
+        raise ValueError("media has no code — cannot build permalink")
 
     media_type = raw.get("media_type")
     product_type = (raw.get("product_type") or "").lower()
@@ -676,7 +679,7 @@ def _normalize_post_hiker(raw: dict[str, Any]) -> ScrapedPost:
 
     return ScrapedPost(
         platform="instagram",
-        platform_post_id=str(code),
+        platform_post_id=str(pk),
         post_type=post_type,
         caption=caption,
         permalink=f"https://www.instagram.com/p/{code}/",
