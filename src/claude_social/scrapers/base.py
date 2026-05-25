@@ -58,6 +58,21 @@ class Scraper(Protocol):
 
     platform: str
 
-    def scrape_posts(self, handle: str, limit: int | None = None) -> list[ScrapedPost]: ...
+    def scrape_posts(
+        self,
+        handle: str,
+        limit: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        platform_account_id: str | None = None,
+    ) -> list[ScrapedPost]: ...
 
-    def scrape_stories(self, handle: str) -> list[ScrapedStory]: ...
+    def scrape_stories(
+        self,
+        handle: str,
+        platform_account_id: str | None = None,
+    ) -> list[ScrapedStory]: ...
+
+    # Set after each scrape_* call when the scraper resolves the platform's
+    # internal user ID. Pipelines persist it to skip the lookup next run.
+    discovered_platform_account_id: str | None

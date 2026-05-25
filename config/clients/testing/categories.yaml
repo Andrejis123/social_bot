@@ -1,0 +1,6 @@
+categories:
+  - name: Post
+    description: Any regular post — photo, video, carousel, or reel.
+
+  - name: Story
+    description: Any story content.

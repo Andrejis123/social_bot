@@ -37,19 +37,24 @@ def upsert_account(
     platform: str,
     handle: str,
     is_owned: bool = True,
-) -> str:
-    """Insert or fetch an account row. Returns account id (uuid)."""
+) -> dict[str, Any]:
+    """Insert or fetch an account row. Returns {'id', 'platform_account_id'}.
+
+    platform_account_id is the platform's stable internal ID (e.g. IG `pk`).
+    It's NULL until the first scrape discovers it; callers should persist via
+    set_account_platform_id() to skip the per-run lookup afterwards.
+    """
     sb = get_supabase()
     existing = (
         sb.table("accounts")
-        .select("id")
+        .select("id, platform_account_id")
         .eq("platform", platform)
         .eq("handle", handle)
         .limit(1)
         .execute()
     )
     if existing.data:
-        return existing.data[0]["id"]
+        return existing.data[0]
     inserted = (
         sb.table("accounts")
         .insert(
@@ -62,7 +67,15 @@ def upsert_account(
         )
         .execute()
     )
-    return inserted.data[0]["id"]
+    return {"id": inserted.data[0]["id"], "platform_account_id": None}
+
+
+def set_account_platform_id(account_id: str, platform_account_id: str) -> None:
+    """Cache the platform's internal user ID on an account row."""
+    sb = get_supabase()
+    sb.table("accounts").update(
+        {"platform_account_id": platform_account_id}
+    ).eq("id", account_id).execute()
 
 
 # =========================

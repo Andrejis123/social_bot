@@ -85,12 +85,14 @@ def _ingest_one_account(
     until: str | None,
     enable_ai: bool,
 ) -> str:
-    account_id = queries.upsert_account(
+    account_row = queries.upsert_account(
         client_id=client_id,
         platform=account.platform,
         handle=account.handle,
         is_owned=account.is_owned,
     )
+    account_id = account_row["id"]
+    cached_pk = account_row.get("platform_account_id")
     scraper = get_scraper(account.platform)
 
     with RunContext(
@@ -98,7 +100,19 @@ def _ingest_one_account(
         client_slug=loaded.slug,
         account_handle=account.handle,
     ) as run:
-        posts = scraper.scrape_posts(account.handle, limit=limit, since=since, until=until)
+        posts = scraper.scrape_posts(
+            account.handle,
+            limit=limit,
+            since=since,
+            until=until,
+            platform_account_id=cached_pk,
+        )
+        discovered_pk = getattr(scraper, "discovered_platform_account_id", None)
+        if discovered_pk and discovered_pk != cached_pk:
+            try:
+                queries.set_account_platform_id(account_id, discovered_pk)
+            except Exception as exc:
+                log.warning("account.set_platform_id_failed", error=str(exc))
         run.items_total = len(posts)
 
         for post in posts:

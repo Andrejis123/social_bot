@@ -15,9 +15,15 @@ The two Apify actors' output shapes are loose (they evolve), so we code
 defensively: every field read goes through `.get(...)` and we lean on the
 `raw` dict to preserve anything we didn't map yet.
 
-Stories scraping is single-tier (`igview-owner/instagram-story-viewer`) —
-HikerAPI's session pool cannot see active stories for accounts it doesn't
-follow; revisit later.
+Stories scraping mirrors the post tiering:
+  1. HikerAPI `/v1/user/stories/by/id` (when configured). Auth-first, so
+     restricted-but-public accounts work.
+  2. `igview-owner/instagram-story-viewer` Apify actor — anonymous, public-
+     only. Fallthrough on hiker error.
+
+When the caller passes a cached `platform_account_id` (the IG `pk`), we
+skip the per-run username→pk lookup, halving HikerAPI request cost on
+the stories cron.
 """
 
 from __future__ import annotations
@@ -64,6 +70,10 @@ class InstagramScraper:
         self._hiker: HikerClient | None = (
             HikerClient(s.hiker_api_key) if s.hiker_api_key else None
         )
+        # Set after each scrape_* call when we successfully resolve the
+        # platform-side user ID (Instagram pk). The pipeline reads this and
+        # persists it on the account row so future runs skip the lookup.
+        self.discovered_platform_account_id: str | None = None
 
     # -------------------------
     # Posts
@@ -75,12 +85,17 @@ class InstagramScraper:
         limit: int | None = None,
         since: str | None = None,
         until: str | None = None,
+        platform_account_id: str | None = None,
     ) -> list[ScrapedPost]:
         """
         Args:
             since: ISO date string (e.g. "2026-04-27") — only return posts on or after this date.
             until: ISO date string (e.g. "2026-05-03") — only return posts on or before this date.
+            platform_account_id: cached IG `pk` for this handle. When set,
+                the HikerAPI tier skips the username→pk lookup (saves one
+                paid request per run).
         """
+        self.discovered_platform_account_id = platform_account_id
         # Tier 1: HikerAPI (top tier, if configured). Trust an empty success
         # — falling through to Apify on an empty-but-valid response would
         # waste paid calls AND, while Apify free-tier is exhausted, propagate
@@ -89,7 +104,11 @@ class InstagramScraper:
         if self._hiker is not None:
             try:
                 return self._scrape_posts_hiker(
-                    handle, limit=limit, since=since, until=until
+                    handle,
+                    limit=limit,
+                    since=since,
+                    until=until,
+                    user_id=platform_account_id,
                 )
             except (HikerTransient, HikerFatal) as exc:
                 log.warning(
@@ -122,14 +141,30 @@ class InstagramScraper:
         limit: int | None,
         since: str | None,
         until: str | None,
+        user_id: str | None,
     ) -> list[ScrapedPost]:
         """Fetch posts via HikerAPI. Returns normalized list; may raise Hiker* exceptions."""
         assert self._hiker is not None  # caller guards on this
         since_dt = _parse_iso_date(since)
         until_dt = _parse_iso_date(until)
-        log.info("hiker.scrape.start", handle=handle, limit=limit)
+        log.info(
+            "hiker.scrape.start",
+            handle=handle,
+            limit=limit,
+            cached_user_id=bool(user_id),
+        )
+        # Resolve the pk in the scraper (not inside the client) so we can
+        # capture it for caching even when fetch_user_medias would have
+        # done the lookup internally.
+        if not user_id:
+            user_id = self._hiker.lookup_user_id(handle)
+        self.discovered_platform_account_id = user_id
         raw_items = self._hiker.fetch_user_medias(
-            handle, limit=limit or 30, since_dt=since_dt, until_dt=until_dt
+            handle,
+            limit=limit or 30,
+            since_dt=since_dt,
+            until_dt=until_dt,
+            user_id=user_id,
         )
         log.info("hiker.scrape.finished", handle=handle, items=len(raw_items))
 
@@ -143,6 +178,7 @@ class InstagramScraper:
                     error=str(exc),
                     platform_post_id=raw.get("code") or raw.get("pk"),
                 )
+
         return posts
 
     def _scrape_posts_primary(
@@ -341,8 +377,65 @@ class InstagramScraper:
     # Stories
     # -------------------------
 
-    def scrape_stories(self, handle: str) -> list[ScrapedStory]:
-        """Run igview-owner/instagram-story-viewer for one profile."""
+    def scrape_stories(
+        self,
+        handle: str,
+        platform_account_id: str | None = None,
+    ) -> list[ScrapedStory]:
+        """Fetch active stories for one IG profile.
+
+        Tier 1: HikerAPI (when configured). Auth-first, sees restricted
+        profiles. Skips the pk lookup if `platform_account_id` is cached.
+        Tier 2: igview Apify actor (anonymous, public-only).
+
+        Empty list = no active stories right now (NOT an error). Hiker
+        errors fall through to Apify; a clean empty hiker response does not.
+        """
+        self.discovered_platform_account_id = platform_account_id
+
+        if self._hiker is not None:
+            try:
+                return self._scrape_stories_hiker(
+                    handle, user_id=platform_account_id
+                )
+            except (HikerTransient, HikerFatal) as exc:
+                log.warning(
+                    "hiker.stories.failed_falling_through",
+                    handle=handle,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+
+        return self._scrape_stories_apify(handle)
+
+    def _scrape_stories_hiker(
+        self,
+        handle: str,
+        user_id: str | None,
+    ) -> list[ScrapedStory]:
+        assert self._hiker is not None
+        cached = user_id is not None
+        if not user_id:
+            user_id = self._hiker.lookup_user_id(handle)
+        self.discovered_platform_account_id = user_id
+
+        log.info("hiker.stories.start", handle=handle, cached_user_id=cached)
+        raw_items = self._hiker.fetch_user_stories(user_id=user_id)
+        log.info("hiker.stories.finished", handle=handle, items=len(raw_items))
+
+        stories: list[ScrapedStory] = []
+        for raw in raw_items:
+            try:
+                stories.append(_normalize_story_hiker(raw))
+            except Exception as exc:
+                log.warning(
+                    "hiker.story.normalize_failed",
+                    error=str(exc),
+                    platform_story_id=raw.get("pk") or raw.get("id"),
+                )
+        return stories
+
+    def _scrape_stories_apify(self, handle: str) -> list[ScrapedStory]:
         actor = "igview-owner/instagram-story-viewer"
         actor_input: dict[str, Any] = {"usernames": [handle]}
 
@@ -628,6 +721,67 @@ def _hiker_media_from_item(raw: dict[str, Any], slide_index: int) -> ScrapedMedi
         duration_seconds=raw.get("video_duration") if is_video else None,
         width=raw.get("original_width"),
         height=raw.get("original_height"),
+    )
+
+
+def _normalize_story_hiker(raw: dict[str, Any]) -> ScrapedStory:
+    """Normalize a HikerAPI /v1/user/stories story item.
+
+    Field conventions (instagrapi v1):
+      pk / id: story media id
+      media_type: 1=image, 2=video
+      taken_at: epoch seconds
+      expiring_at: epoch seconds
+      video_url: top-level for v1 (no `video_versions` array)
+      thumbnail_url: image fallback
+    """
+    platform_story_id = str(raw.get("pk") or raw.get("id") or "")
+    if not platform_story_id:
+        raise ValueError("story has no pk/id")
+
+    is_video = raw.get("media_type") == 2
+    if is_video:
+        source = raw.get("video_url") or ""
+        if not source:
+            video_versions = raw.get("video_versions") or []
+            if video_versions and isinstance(video_versions[0], dict):
+                source = video_versions[0].get("url") or ""
+    else:
+        source = raw.get("thumbnail_url") or ""
+        if not source:
+            image_versions2 = raw.get("image_versions2") or {}
+            candidates = image_versions2.get("candidates") or []
+            if candidates and isinstance(candidates[0], dict):
+                source = candidates[0].get("url") or ""
+
+    media = [
+        ScrapedMedia(
+            slide_index=0,
+            media_type="video" if is_video else "image",
+            source_url=source,
+            duration_seconds=raw.get("video_duration") if is_video else None,
+            width=raw.get("original_width"),
+            height=raw.get("original_height"),
+        )
+    ]
+
+    posted_at = _parse_ts(raw.get("taken_at"))
+    expires_at = _parse_ts(raw.get("expiring_at"))
+    if expires_at is None and posted_at is not None:
+        from datetime import timedelta
+        expires_at = posted_at + timedelta(hours=24)
+
+    caption_obj = raw.get("caption")
+    caption = caption_obj.get("text") if isinstance(caption_obj, dict) else None
+
+    return ScrapedStory(
+        platform="instagram",
+        platform_story_id=platform_story_id,
+        posted_at=posted_at,
+        expires_at=expires_at,
+        caption=caption,
+        media=media,
+        raw=raw,
     )
 
 

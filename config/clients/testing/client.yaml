@@ -1,0 +1,14 @@
+slug: testing
+name: "Testing Account"
+
+accounts:
+  - platform: instagram
+    handle: "monitoring_activity123"
+    is_owned: true
+    is_active: true
+
+ai:
+  provider: gemini
+  prompt_version: "v1"
+  prompt_file: prompt.md
+  categories_file: categories.yaml

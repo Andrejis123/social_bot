@@ -75,8 +75,12 @@ class HikerClient:
         limit: int = 30,
         since_dt: datetime | None = None,
         until_dt: datetime | None = None,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Fetch up to `limit` recent posts for `handle`.
+
+        If `user_id` is provided, the username→pk lookup is skipped — saves
+        one paid request per run.
 
         Posts come back newest-first. We stop paginating as soon as the
         oldest item drops below `since_dt` — no point pulling more history
@@ -90,12 +94,39 @@ class HikerClient:
             HikerFatal: handle not found, key invalid, or permanent 4xx
             HikerTransient: 5xx, network, or timeout after one retry
         """
-        user_id = self._lookup_user_id(handle)
+        uid = user_id or self.lookup_user_id(handle)
         return self._paginate_medias(
-            user_id, limit=limit, since_dt=since_dt, until_dt=until_dt
+            uid, limit=limit, since_dt=since_dt, until_dt=until_dt
         )
 
-    def _lookup_user_id(self, handle: str) -> str:
+    def fetch_user_stories(self, *, user_id: str) -> list[dict[str, Any]]:
+        """Fetch active story items for an Instagram account by its `pk`.
+
+        Hits `/v2/user/stories/by/id` (the namespace the HikerAPI dashboard
+        actually meters us on — `/v2/user/stories`). Returns raw story dicts
+        in v2 (instagrapi-v2) shape. Empty list = no active stories (NOT an
+        error). Caller is responsible for supplying `user_id`.
+        """
+        data = self._get("/v2/user/stories/by/id", params={"user_id": user_id})
+        # v2 response shapes seen in the wild:
+        #   {"response": {"reels": [item, ...]}}
+        #   {"response": {"items": [item, ...]}}
+        #   {"response": [item, ...]}
+        # Fall through tolerantly — empty list on anything unexpected.
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            resp = data.get("response", data)
+            if isinstance(resp, list):
+                return resp
+            if isinstance(resp, dict):
+                for key in ("reels", "items", "stories"):
+                    val = resp.get(key)
+                    if isinstance(val, list):
+                        return val
+        return []
+
+    def lookup_user_id(self, handle: str) -> str:
         h = handle.lstrip("@")
         data = self._get("/v2/user/by/username", params={"username": h})
         user = (data.get("user") or {}) if isinstance(data, dict) else {}
@@ -168,8 +199,9 @@ class HikerClient:
         )
         return collected
 
-    def _get(self, path: str, *, params: dict[str, Any]) -> dict[str, Any]:
-        """GET with single retry on transient errors. Returns parsed JSON dict."""
+    def _get(self, path: str, *, params: dict[str, Any]) -> Any:
+        """GET with single retry on transient errors. Returns parsed JSON
+        (dict for most endpoints; some /v1/ endpoints return lists)."""
         for attempt in (0, 1):
             try:
                 r = self._http.get(path, params=params)
@@ -186,10 +218,6 @@ class HikerClient:
                     parsed = r.json()
                 except ValueError as exc:
                     raise HikerTransient(f"bad JSON: {exc}") from exc
-                if not isinstance(parsed, dict):
-                    raise HikerTransient(
-                        f"unexpected non-dict response: {type(parsed).__name__}"
-                    )
                 return parsed
 
             if status in (401, 403):
