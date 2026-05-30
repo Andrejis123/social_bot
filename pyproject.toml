@@ -45,3 +45,8 @@ select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "python-pptx>=1.0.2",
+]

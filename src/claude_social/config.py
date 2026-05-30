@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     supabase_url: str = Field(..., alias="SUPABASE_URL")
     supabase_service_key: str = Field(..., alias="SUPABASE_SERVICE_KEY")
     supabase_media_bucket: str = Field("media", alias="SUPABASE_MEDIA_BUCKET")
+    supabase_reports_bucket: str = Field("reports", alias="SUPABASE_REPORTS_BUCKET")
 
     # --- Apify ---
     apify_token: str = Field(..., alias="APIFY_TOKEN")

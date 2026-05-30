@@ -1,0 +1,39 @@
+# Agape Slovensko brand profile (v1, derived 2026-05-25)
+# Source: https://agapeslovensko.sk/ + logo at assets/clients/agape/logo.jpg
+# Status: SIMULATED. Replace with official brand guidelines when client provides them.
+
+name: Agapé Slovensko
+website: https://agapeslovensko.sk
+logo_path: assets/clients/agape/logo.jpg
+
+palette:
+  # From logo + homepage HTML scan
+  primary: "#F57C1E"      # estimated from heart icon (warm orange)
+  secondary: "#10172A"    # exact match from homepage HTML (deep navy, wordmark)
+  background: "#FFFFFF"   # logo background; site is light-themed
+  text: "#10172A"         # same as secondary
+  accent: "#F57C1E"       # same as primary
+  # Suggested derived shades (use sparingly)
+  navy_light: "#1F2A4A"
+  orange_light: "#FFA866"
+  # Single-color stripe (8 segments, all primary orange) — minimal on-brand line
+  stripe_colors:
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+
+typography:
+  # Not declared in site HTML; suggestions reasonable for faith/community brand
+  heading: "Montserrat, sans-serif"   # placeholder
+  body: "Open Sans, sans-serif"        # placeholder
+  notes: "Verify with client. WP theme CSS not inspected."
+
+theme_intent:
+  mood: warm, community, faith-led
+  tone_for_report: friendly but professional; client is the audience
+  contrast_with_ecig: light theme (white bg, navy text) vs ecig dark theme (navy bg, white text)

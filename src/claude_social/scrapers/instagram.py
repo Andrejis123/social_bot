@@ -28,7 +28,7 @@ the stories cron.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from apify_client import ApifyClient
@@ -36,7 +36,7 @@ from apify_client import ApifyClient
 from ..config import get_settings
 from ..logging import get_logger
 from ._hiker_client import HikerClient, HikerFatal, HikerTransient
-from .base import ScrapedMedia, ScrapedPost, ScrapedStory
+from .base import REEL_COVER_SLIDE_INDEX, ScrapedMedia, ScrapedPost, ScrapedStory
 
 log = get_logger(__name__)
 
@@ -498,17 +498,43 @@ def _determine_post_type(raw: dict[str, Any]) -> str:
     return "image"
 
 
-def _media_from_child(child: dict[str, Any], slide_index: int) -> ScrapedMedia:
+def _media_from_child(child: dict[str, Any], slide_index: int) -> list[ScrapedMedia]:
+    """Build media entries from an Apify carousel child. Videos return
+    [video, cover_image] so the cover is downloaded at scrape time."""
     is_video = bool(child.get("videoUrl") or (child.get("type") or "").lower() == "video")
-    source = child.get("videoUrl") or child.get("displayUrl") or ""
-    return ScrapedMedia(
-        slide_index=slide_index,
-        media_type="video" if is_video else "image",
-        source_url=source,
-        duration_seconds=child.get("videoDuration"),
-        width=child.get("dimensionsWidth"),
-        height=child.get("dimensionsHeight"),
-    )
+    if not is_video:
+        return [
+            ScrapedMedia(
+                slide_index=slide_index,
+                media_type="image",
+                source_url=child.get("displayUrl") or "",
+                width=child.get("dimensionsWidth"),
+                height=child.get("dimensionsHeight"),
+            )
+        ]
+
+    items: list[ScrapedMedia] = [
+        ScrapedMedia(
+            slide_index=slide_index,
+            media_type="video",
+            source_url=child.get("videoUrl") or "",
+            duration_seconds=child.get("videoDuration"),
+            width=child.get("dimensionsWidth"),
+            height=child.get("dimensionsHeight"),
+        )
+    ]
+    cover = child.get("displayUrl")
+    if cover:
+        items.append(
+            ScrapedMedia(
+                slide_index=REEL_COVER_SLIDE_INDEX,
+                media_type="image",
+                source_url=cover,
+                width=child.get("dimensionsWidth"),
+                height=child.get("dimensionsHeight"),
+            )
+        )
+    return items
 
 
 def _normalize_post(raw: dict[str, Any]) -> ScrapedPost:
@@ -518,21 +544,44 @@ def _normalize_post(raw: dict[str, Any]) -> ScrapedPost:
 
     if post_type == "carousel" and children:
         for idx, child in enumerate(children):
-            media.append(_media_from_child(child, idx))
+            media.extend(_media_from_child(child, idx))
     else:
-        # Single-media post (image, video, or reel). Build one ScrapedMedia.
+        # Single-media post (image, video, or reel).
         is_video = post_type in {"video", "reel"} or bool(raw.get("videoUrl"))
-        source = raw.get("videoUrl") or raw.get("displayUrl") or ""
-        media.append(
-            ScrapedMedia(
-                slide_index=0,
-                media_type="video" if is_video else "image",
-                source_url=source,
-                duration_seconds=raw.get("videoDuration"),
-                width=raw.get("dimensionsWidth"),
-                height=raw.get("dimensionsHeight"),
+        if is_video:
+            media.append(
+                ScrapedMedia(
+                    slide_index=0,
+                    media_type="video",
+                    source_url=raw.get("videoUrl") or "",
+                    duration_seconds=raw.get("videoDuration"),
+                    width=raw.get("dimensionsWidth"),
+                    height=raw.get("dimensionsHeight"),
+                )
             )
-        )
+            cover = raw.get("displayUrl")
+            if cover:
+                # Pair the reel/video with its cover thumbnail — downloaded at
+                # scrape time so the report doesn't have to chase stale URLs.
+                media.append(
+                    ScrapedMedia(
+                        slide_index=REEL_COVER_SLIDE_INDEX,
+                        media_type="image",
+                        source_url=cover,
+                        width=raw.get("dimensionsWidth"),
+                        height=raw.get("dimensionsHeight"),
+                    )
+                )
+        else:
+            media.append(
+                ScrapedMedia(
+                    slide_index=0,
+                    media_type="image",
+                    source_url=raw.get("displayUrl") or "",
+                    width=raw.get("dimensionsWidth"),
+                    height=raw.get("dimensionsHeight"),
+                )
+            )
 
     platform_post_id = (
         raw.get("id") or raw.get("shortCode") or raw.get("shortcode") or ""
@@ -666,13 +715,13 @@ def _normalize_post_hiker(raw: dict[str, Any]) -> ScrapedPost:
 
     if post_type == "carousel":
         children = raw.get("carousel_media") or []
-        media = [_hiker_media_from_item(c, idx) for idx, c in enumerate(children)]
+        media = [m for idx, c in enumerate(children) for m in _hiker_media_from_item(c, idx)]
         if not media:
             # Carousel with no children — happens occasionally. Fall back to
             # the cover image so downstream pipeline still has something.
-            media = [_hiker_media_from_item(raw, 0)]
+            media = _hiker_media_from_item(raw, 0)
     else:
-        media = [_hiker_media_from_item(raw, 0)]
+        media = _hiker_media_from_item(raw, 0)
 
     caption_obj = raw.get("caption")
     caption = caption_obj.get("text") if isinstance(caption_obj, dict) else None
@@ -693,38 +742,72 @@ def _normalize_post_hiker(raw: dict[str, Any]) -> ScrapedPost:
     )
 
 
-def _hiker_media_from_item(raw: dict[str, Any], slide_index: int) -> ScrapedMedia:
-    """Build a ScrapedMedia from a top-level media or a carousel child.
+def _hiker_cover_url(raw: dict[str, Any]) -> str:
+    """Best-available cover/thumbnail URL from a HikerAPI media payload."""
+    image_versions2 = raw.get("image_versions2") or {}
+    candidates = image_versions2.get("candidates") or []
+    if candidates and isinstance(candidates[0], dict):
+        url = candidates[0].get("url")
+        if url:
+            return url
+    return raw.get("thumbnail_url") or ""
+
+
+def _hiker_media_from_item(raw: dict[str, Any], slide_index: int) -> list[ScrapedMedia]:
+    """Build ScrapedMedia entries from a top-level media or a carousel child.
+
+    Image: returns [image].
+    Video/reel: returns [video, cover_image]. The cover is stored at the
+    sentinel REEL_COVER_SLIDE_INDEX so it doesn't collide with carousel slides
+    and so reports can find it by convention. Storing cover at scrape-time
+    avoids the stale-URL heal cascade — fresh URLs work immediately, week-old
+    ones don't.
 
     Same field shape either way — IG's mobile API uses the same Media model
     nested under `carousel_media[]`.
     """
     is_video = raw.get("media_type") == 2
 
-    if is_video:
-        video_versions = raw.get("video_versions") or []
-        source = ""
-        if video_versions and isinstance(video_versions[0], dict):
-            source = video_versions[0].get("url") or ""
-        if not source:
-            source = raw.get("video_url") or ""
-    else:
-        image_versions2 = raw.get("image_versions2") or {}
-        candidates = image_versions2.get("candidates") or []
-        source = ""
-        if candidates and isinstance(candidates[0], dict):
-            source = candidates[0].get("url") or ""
-        if not source:
-            source = raw.get("thumbnail_url") or ""
+    if not is_video:
+        return [
+            ScrapedMedia(
+                slide_index=slide_index,
+                media_type="image",
+                source_url=_hiker_cover_url(raw),
+                width=raw.get("original_width"),
+                height=raw.get("original_height"),
+            )
+        ]
 
-    return ScrapedMedia(
-        slide_index=slide_index,
-        media_type="video" if is_video else "image",
-        source_url=source,
-        duration_seconds=raw.get("video_duration") if is_video else None,
-        width=raw.get("original_width"),
-        height=raw.get("original_height"),
-    )
+    video_versions = raw.get("video_versions") or []
+    video_url = ""
+    if video_versions and isinstance(video_versions[0], dict):
+        video_url = video_versions[0].get("url") or ""
+    if not video_url:
+        video_url = raw.get("video_url") or ""
+
+    items: list[ScrapedMedia] = [
+        ScrapedMedia(
+            slide_index=slide_index,
+            media_type="video",
+            source_url=video_url,
+            duration_seconds=raw.get("video_duration"),
+            width=raw.get("original_width"),
+            height=raw.get("original_height"),
+        )
+    ]
+    cover_url = _hiker_cover_url(raw)
+    if cover_url:
+        items.append(
+            ScrapedMedia(
+                slide_index=REEL_COVER_SLIDE_INDEX,
+                media_type="image",
+                source_url=cover_url,
+                width=raw.get("original_width"),
+                height=raw.get("original_height"),
+            )
+        )
+    return items
 
 
 def _normalize_story_hiker(raw: dict[str, Any]) -> ScrapedStory:
@@ -771,7 +854,6 @@ def _normalize_story_hiker(raw: dict[str, Any]) -> ScrapedStory:
     posted_at = _parse_ts(raw.get("taken_at"))
     expires_at = _parse_ts(raw.get("expiring_at"))
     if expires_at is None and posted_at is not None:
-        from datetime import timedelta
         expires_at = posted_at + timedelta(hours=24)
 
     caption_obj = raw.get("caption")
@@ -809,7 +891,6 @@ def _normalize_story(raw: dict[str, Any]) -> ScrapedStory:
     # igview doesn't return expiring_at; Instagram stories always expire 24h after posting.
     expires_at = None
     if posted_at:
-        from datetime import timedelta
         expires_at = posted_at + timedelta(hours=24)
 
     return ScrapedStory(

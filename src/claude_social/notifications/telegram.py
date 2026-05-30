@@ -150,6 +150,24 @@ def notify_ai_retry_completed(
     send("\n".join(lines))
 
 
+def notify_report_generated(
+    *,
+    client_name: str,
+    period_label: str,
+    slide_count: int,
+    bytes_size: int,
+    signed_url: str,
+) -> None:
+    """Ping when a report .pptx has been rendered and uploaded to Supabase."""
+    size_mb = bytes_size / (1024 * 1024)
+    send(
+        f"📊 <b>Report generated</b>\n\n"
+        f"{client_name} · {period_label}\n"
+        f"{slide_count} slides · {size_mb:.1f} MB\n"
+        f'<a href="{signed_url}">Download .pptx</a>'
+    )
+
+
 def notify_ai_exhausted(
     *,
     run_id: str,

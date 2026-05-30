@@ -1,1 +1,1 @@
-"""Phase 2 stub — report generation (PDF/email). Not yet implemented."""
+"""Code-driven .pptx report renderer (v1, started 2026-05-26)."""
