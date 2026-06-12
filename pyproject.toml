@@ -1,7 +1,7 @@
 [project]
-name = "claude-social"
+name = "social-bot"
 version = "0.1.0"
-description = "Automated social media tracking and reporting (Instagram-first)."
+description = "Automated social-media tracking and monthly client reports."
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [

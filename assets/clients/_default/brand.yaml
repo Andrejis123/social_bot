@@ -1,0 +1,30 @@
+# Default brand fallback profile.
+# Loaded by reports/brand.py when a client has no assets/clients/<slug>/brand.yaml.
+# Currently a copy of the agape palette as a working placeholder — swap the
+# logo + this palette when an in-house brand is finalized.
+
+name: Default
+website: ""
+logo_path: assets/clients/_default/logo.jpg
+
+palette:
+  primary: "#F57C1E"
+  secondary: "#10172A"
+  background: "#FFFFFF"
+  text: "#10172A"
+  accent: "#F57C1E"
+  navy_light: "#1F2A4A"
+  orange_light: "#FFA866"
+  stripe_colors:
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+    - "#F57C1E"
+
+typography:
+  heading: "Montserrat, sans-serif"
+  body: "Open Sans, sans-serif"

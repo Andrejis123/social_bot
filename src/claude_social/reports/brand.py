@@ -46,6 +46,8 @@ class Brand:
     @classmethod
     def load(cls, slug: str) -> "Brand":
         path = REPO_ROOT / "assets" / "clients" / slug / "brand.yaml"
+        if not path.exists():
+            path = REPO_ROOT / "assets" / "clients" / "_default" / "brand.yaml"
         data = yaml.safe_load(path.read_text())
         palette = data["palette"]
         typography = data.get("typography", {})

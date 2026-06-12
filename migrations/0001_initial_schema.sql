@@ -1,4 +1,4 @@
--- Claude_Social — initial schema (Phase 1).
+-- Social Bot — initial schema (Phase 1).
 -- Paste this into the Supabase SQL editor and run.
 -- Assumes `gen_random_uuid()` is available (it is, via pgcrypto on Supabase).
 
