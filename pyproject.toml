@@ -20,6 +20,7 @@ dependencies = [
     "google-api-python-client>=2.130",
     "google-auth-oauthlib>=1.2",
     "google-auth-httplib2>=0.2",
+    "python-pptx>=1.0.2",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +51,4 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 
 [dependency-groups]
-dev = [
-    "python-pptx>=1.0.2",
-]
+dev = []
