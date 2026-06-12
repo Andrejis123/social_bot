@@ -91,6 +91,7 @@ def classify_with_gemini(
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=schema,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 ),
             )
             text = (response.text or "").strip()
@@ -156,6 +157,7 @@ def describe_with_gemini(
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=schema,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                 ),
             )
             text = (response.text or "").strip()

@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(None, alias="OPENAI_API_KEY")
     openai_model: str = Field("gpt-4o-mini", alias="OPENAI_MODEL")
 
+    # --- Google Drive (reports + content bundles) ---
+    google_oauth_client_id: str | None = Field(None, alias="GOOGLE_OAUTH_CLIENT_ID")
+    google_oauth_client_secret: str | None = Field(None, alias="GOOGLE_OAUTH_CLIENT_SECRET")
+    google_oauth_refresh_token: str | None = Field(None, alias="GOOGLE_OAUTH_REFRESH_TOKEN")
+    google_drive_root_folder: str = Field("SMM - Reports", alias="GOOGLE_DRIVE_ROOT_FOLDER")
+
     # --- Notifications ---
     telegram_bot_token: str | None = Field(None, alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str | None = Field(None, alias="TELEGRAM_CHAT_ID")

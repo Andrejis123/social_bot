@@ -321,6 +321,81 @@ def insert_media(
     return res.data[0]["id"]
 
 
+def get_client_id_by_slug(slug: str) -> str | None:
+    sb = get_supabase()
+    res = sb.table("clients").select("id").eq("slug", slug).limit(1).execute()
+    return res.data[0]["id"] if res.data else None
+
+
+def list_accounts_for_client(client_id: str) -> list[dict[str, Any]]:
+    sb = get_supabase()
+    res = (
+        sb.table("accounts")
+        .select("id, handle, platform")
+        .eq("client_id", client_id)
+        .execute()
+    )
+    return res.data or []
+
+
+def list_posts_in_period(
+    account_ids: list[str], start: datetime, end: datetime,
+) -> list[dict[str, Any]]:
+    sb = get_supabase()
+    res = (
+        sb.table("posts")
+        .select("id, account_id, posted_at, platform_post_id")
+        .in_("account_id", account_ids)
+        .gte("posted_at", start.isoformat())
+        .lte("posted_at", end.isoformat())
+        .execute()
+    )
+    return res.data or []
+
+
+def list_media_for_posts(post_ids: list[str]) -> list[dict[str, Any]]:
+    if not post_ids:
+        return []
+    sb = get_supabase()
+    res = (
+        sb.table("media")
+        .select("post_id, slide_index, storage_path, media_type")
+        .in_("post_id", post_ids)
+        .not_.is_("storage_path", "null")
+        .execute()
+    )
+    return res.data or []
+
+
+def list_stories_in_period(
+    account_ids: list[str], start: datetime, end: datetime,
+) -> list[dict[str, Any]]:
+    sb = get_supabase()
+    res = (
+        sb.table("stories")
+        .select("id, account_id, posted_at, platform_story_id")
+        .in_("account_id", account_ids)
+        .gte("posted_at", start.isoformat())
+        .lte("posted_at", end.isoformat())
+        .execute()
+    )
+    return res.data or []
+
+
+def list_story_media_for_stories(story_ids: list[str]) -> list[dict[str, Any]]:
+    if not story_ids:
+        return []
+    sb = get_supabase()
+    res = (
+        sb.table("story_media")
+        .select("story_id, storage_path, media_type")
+        .in_("story_id", story_ids)
+        .not_.is_("storage_path", "null")
+        .execute()
+    )
+    return res.data or []
+
+
 def list_media_for_post(post_id: str) -> list[dict[str, Any]]:
     sb = get_supabase()
     res = (

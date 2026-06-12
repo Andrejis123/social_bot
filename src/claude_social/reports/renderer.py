@@ -35,6 +35,7 @@ from pathlib import Path
 
 from pptx import Presentation
 
+from .. import drive
 from ..logging import get_logger
 from ..notifications import telegram
 from ..storage.reports import UploadedReport, upload_report
@@ -173,6 +174,19 @@ def publish_report(
     """
     built = _build_report(client_slug, period, out_dir=out_dir)
     uploaded = upload_report(client_slug, built.path)
+
+    # Drive upload is best-effort: failure must not break the existing
+    # Supabase + Telegram path (which is what cron relies on for delivery).
+    try:
+        drive_result = drive.upload_report(client_slug, built.path)
+        log.info(
+            "report.drive_uploaded",
+            client=client_slug,
+            file_id=drive_result["id"],
+            url=drive_result["webViewLink"],
+        )
+    except Exception as exc:
+        log.warning("report.drive_upload_failed", client=client_slug, error=str(exc))
 
     telegram.notify_report_generated(
         client_name=built.report.client_name,
@@ -550,7 +564,7 @@ def _build_summary_cards(
         story_cadence = MetricCard(
             label="Story cadence",
             value=f"{account.total_stories / days:.1f} / day",
-            caption=f"{account.total_stories} stories across {days} days.",
+            caption=f"{account.total_stories} {'story' if account.total_stories == 1 else 'stories'} across {days} days.",
         )
     else:
         story_cadence = MetricCard(

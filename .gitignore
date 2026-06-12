@@ -41,6 +41,10 @@ tmp/
 .claudeignore
 skills-lock.json
 
+# Google Drive integration (secrets + local folder-ID cache)
+credentials.json
+.drive_folder_cache.json
+
 # Project documents and sample files
 Documents/
 *.pdf
