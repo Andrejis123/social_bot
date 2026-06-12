@@ -21,10 +21,11 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 RUN uv sync --frozen --no-dev || uv sync --no-dev
 
-# Copy everything else (scripts, config, migrations).
+# Copy everything else (scripts, config, migrations, brand assets).
 COPY scripts/ ./scripts/
 COPY config/ ./config/
 COPY migrations/ ./migrations/
+COPY assets/ ./assets/
 
 # Default: print help. Override with `docker run ... python -m scripts.scrape_posts ...`
 ENTRYPOINT ["uv", "run", "--no-sync", "--"]
