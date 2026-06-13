@@ -16,8 +16,8 @@ from __future__ import annotations
 from google import genai
 from google.genai import types
 
-from claude_social.config import get_settings
-from claude_social.db.client import get_supabase
+from social_bot.config import get_settings
+from social_bot.db.client import get_supabase
 
 WINDOW_START = "2026-04-25T00:00:00+00:00"
 WINDOW_END = "2026-05-25T23:59:59+00:00"

@@ -1,4 +1,4 @@
-# Claude_Social — Architecture Plan (Phase 1)
+# Social_Bot — Architecture Plan (Phase 1)
 
 ## Context
 
@@ -9,7 +9,7 @@ Andy manages social media for multiple clients and needs an automated system tha
 4. **Classifies** each post with AI using a per-client prompt that changes often,
 5. **Eventually** generates periodic client-facing reports (PDF/email — deferred to Phase 2).
 
-Andy tried this in n8n and hit a wall because debug iteration was too slow. The move to code is for faster feedback loops with Claude. He is an **amateur** — the architecture must be approachable, not clever.
+Andy tried this in n8n and hit a wall because debug iteration was too slow. The move to code is for faster feedback loops. He is an **amateur** — the architecture must be approachable, not clever.
 
 **Phase 1 scope (this plan):** Instagram only, one client, manual triggering, reliable scraper + dedupe + media backup + AI classification + solid observability. Reports are deferred.
 
@@ -39,7 +39,7 @@ Andy tried this in n8n and hit a wall because debug iteration was too slow. The 
 ## Project structure
 
 ```
-claude_social/
+social_bot/
 ├── .env.example
 ├── .gitignore
 ├── pyproject.toml              # uv-managed, Python 3.12
@@ -55,7 +55,7 @@ claude_social/
 │           ├── client.yaml         # accounts, platform, AI provider choice
 │           ├── prompt.md           # AI classification prompt (editable)
 │           └── categories.yaml     # allowed category list + descriptions
-├── src/claude_social/
+├── src/social_bot/
 │   ├── config.py                   # pydantic-settings: SUPABASE_URL, APIFY_TOKEN, GEMINI_KEY, …
 │   ├── logging.py                  # structlog config, injects run_id
 │   ├── db/
@@ -162,12 +162,12 @@ All new (greenfield project):
 
 1. `pyproject.toml`, `.env.example`, `.gitignore`, `justfile`, `docker/Dockerfile`, `docker/docker-compose.yml`
 2. `migrations/0001_initial_schema.sql`
-3. `src/claude_social/config.py`, `logging.py`
-4. `src/claude_social/db/client.py`, `db/queries.py`
-5. `src/claude_social/storage/media.py`
-6. `src/claude_social/scrapers/base.py`, `scrapers/instagram.py`, `scrapers/registry.py`
-7. `src/claude_social/ai/classifier.py`, `ai/media_sampler.py`, `ai/providers/gemini.py`, `ai/providers/openai.py`
-8. `src/claude_social/pipeline/run_context.py`, `pipeline/ingest_posts.py`, `pipeline/ingest_stories.py`
+3. `src/social_bot/config.py`, `logging.py`
+4. `src/social_bot/db/client.py`, `db/queries.py`
+5. `src/social_bot/storage/media.py`
+6. `src/social_bot/scrapers/base.py`, `scrapers/instagram.py`, `scrapers/registry.py`
+7. `src/social_bot/ai/classifier.py`, `ai/media_sampler.py`, `ai/providers/gemini.py`, `ai/providers/openai.py`
+8. `src/social_bot/pipeline/run_context.py`, `pipeline/ingest_posts.py`, `pipeline/ingest_stories.py`
 9. `scripts/scrape_posts.py`, `scripts/scrape_stories.py`, `scripts/run_migration.py`
 10. `config/clients/example_client/client.yaml`, `prompt.md`, `categories.yaml`
 

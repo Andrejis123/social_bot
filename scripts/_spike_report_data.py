@@ -12,7 +12,7 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 
-from claude_social.db.client import get_supabase
+from social_bot.db.client import get_supabase
 
 WINDOW_START = "2026-04-25T00:00:00+00:00"
 WINDOW_END = "2026-05-25T23:59:59+00:00"

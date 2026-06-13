@@ -23,11 +23,11 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
-from claude_social import drive
-from claude_social.db import queries
-from claude_social.logging import get_logger
-from claude_social.reports.data import build_period
-from claude_social.storage.media import download_from_storage
+from social_bot import drive
+from social_bot.db import queries
+from social_bot.logging import get_logger
+from social_bot.reports.data import build_period
+from social_bot.storage.media import download_from_storage
 
 log = get_logger(__name__)
 

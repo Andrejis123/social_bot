@@ -34,7 +34,7 @@ scratch/
 *.log
 tmp/
 
-# Claude Code internals
+# Editor / agent harness internals
 .claude/
 .agents/
 .cache/

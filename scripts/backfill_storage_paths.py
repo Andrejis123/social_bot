@@ -33,9 +33,9 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-from claude_social.config import get_settings
-from claude_social.db.client import get_supabase
-from claude_social.logging import get_logger
+from social_bot.config import get_settings
+from social_bot.db.client import get_supabase
+from social_bot.logging import get_logger
 
 log = get_logger(__name__)
 

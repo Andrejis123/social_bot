@@ -12,7 +12,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: claude-social:latest
+    image: social-bot:latest
     env_file:
       - ../.env
     # Mount the client-config folder so edits to YAMLs/prompts are picked up

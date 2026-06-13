@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from claude_social.reports.data import build_period, load_report_data
+from social_bot.reports.data import build_period, load_report_data
 
 CLIENT = "ecig-monitoring"
 START = datetime(2026, 4, 25, 0, 0, 0, tzinfo=timezone.utc)

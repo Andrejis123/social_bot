@@ -1,7 +1,7 @@
 """Geometric constants for the report layout.
 
 All measurements in inches unless stated. Original measurements extracted from
-the Claude-recreated AUGUST reference deck on 2026-05-26; iteratively refined
+a recreated AUGUST reference deck on 2026-05-26; iteratively refined
 based on user feedback (2026-05-26).
 
 The renderer is code-driven — there is no master template. These constants are

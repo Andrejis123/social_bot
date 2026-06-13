@@ -21,8 +21,8 @@ from datetime import datetime, timezone
 from google import genai
 from google.genai import types
 
-from claude_social.config import get_settings
-from claude_social.reports.data import build_period, load_report_data
+from social_bot.config import get_settings
+from social_bot.reports.data import build_period, load_report_data
 
 CLIENT = "ecig-monitoring"
 START = datetime(2026, 4, 25, 0, 0, 0, tzinfo=timezone.utc)

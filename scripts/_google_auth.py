@@ -9,7 +9,7 @@ three values to copy into `.env`:
     GOOGLE_OAUTH_CLIENT_SECRET=...
     GOOGLE_OAUTH_REFRESH_TOKEN=...
 
-After that, `src/claude_social/drive.py` reads them from settings and never
+After that, `src/social_bot/drive.py` reads them from settings and never
 needs an interactive flow again.
 """
 
@@ -20,7 +20,7 @@ import sys
 
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-from claude_social.config import REPO_ROOT
+from social_bot.config import REPO_ROOT
 
 CREDENTIALS_PATH = REPO_ROOT / "credentials.json"
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]

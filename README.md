@@ -28,7 +28,7 @@ Currently runs Instagram posts + stories scraping → AI classification + descri
 ## Layout
 
 ```
-src/claude_social/
+src/social_bot/
   config.py        # typed env settings (pydantic-settings)
   logging.py       # structlog setup
   db/              # Supabase client + typed CRUD (only module that knows column names)
@@ -69,7 +69,7 @@ python scripts/_google_auth.py
 
 ## Adding a new platform
 
-1. Add `src/claude_social/scrapers/<platform>.py` implementing the `Scraper` protocol from `scrapers/base.py`.
+1. Add `src/social_bot/scrapers/<platform>.py` implementing the `Scraper` protocol from `scrapers/base.py`.
 2. Register it in `scrapers/registry.py`.
 3. Add `platform: <name>` entries to client YAML files.
 No DB migrations needed — schema already has a `platform` column.
@@ -80,9 +80,9 @@ No DB migrations needed — schema already has a `platform` column.
 # Local
 git push origin main
 
-# On VPS (root@<host>:/opt/claude-social)
+# On VPS (root@<host>:/opt/social-bot)
 git pull
 docker compose -f docker/docker-compose.yml build
 ```
 
-Crontab on the VPS drives all scheduled work; the file is owned by root and backups are kept at `/opt/claude-social/crontab.backup.*`.
+Crontab on the VPS drives all scheduled work; the file is owned by root and backups are kept at `/opt/social-bot/crontab.backup.*`.

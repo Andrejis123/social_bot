@@ -18,9 +18,9 @@ from __future__ import annotations
 import sys
 from datetime import datetime, timezone
 
-from claude_social.logging import get_logger
-from claude_social.reports.data import build_period
-from claude_social.reports.renderer import publish_report
+from social_bot.logging import get_logger
+from social_bot.reports.data import build_period
+from social_bot.reports.renderer import publish_report
 
 log = get_logger(__name__)
 

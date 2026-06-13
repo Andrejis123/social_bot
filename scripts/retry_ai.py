@@ -13,12 +13,12 @@ from collections import defaultdict
 
 import typer
 
-from claude_social.ai.classifier import classify
-from claude_social.clients import load_client
-from claude_social.db import queries
-from claude_social.logging import get_logger, setup_logging
-from claude_social.notifications.telegram import notify_ai_exhausted, notify_ai_retry_completed
-from claude_social.scrapers.base import ScrapedMedia, ScrapedPost
+from social_bot.ai.classifier import classify
+from social_bot.clients import load_client
+from social_bot.db import queries
+from social_bot.logging import get_logger, setup_logging
+from social_bot.notifications.telegram import notify_ai_exhausted, notify_ai_retry_completed
+from social_bot.scrapers.base import ScrapedMedia, ScrapedPost
 
 app = typer.Typer(add_completion=False)
 log = get_logger(__name__)

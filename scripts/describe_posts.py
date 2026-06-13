@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import typer
 
-from claude_social.logging import get_logger, setup_logging
-from claude_social.pipeline.describe_posts import describe_posts_for_client
+from social_bot.logging import get_logger, setup_logging
+from social_bot.pipeline.describe_posts import describe_posts_for_client
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 log = get_logger(__name__)

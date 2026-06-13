@@ -12,8 +12,8 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 
-from claude_social.reports.data import build_period, load_report_data
-from claude_social.reports.synthesis import synthesize_category
+from social_bot.reports.data import build_period, load_report_data
+from social_bot.reports.synthesis import synthesize_category
 
 CLIENT = "ecig-monitoring"
 START = datetime(2026, 4, 25, 0, 0, 0, tzinfo=timezone.utc)

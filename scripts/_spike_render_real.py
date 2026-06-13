@@ -24,8 +24,8 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from claude_social.reports.data import build_period
-from claude_social.reports.renderer import (
+from social_bot.reports.data import build_period
+from social_bot.reports.renderer import (
     DEFAULT_OUT_DIR,
     generate_report,
     publish_report,

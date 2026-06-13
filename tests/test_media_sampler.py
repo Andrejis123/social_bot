@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from claude_social.ai.media_sampler import pick_for_ai
-from claude_social.scrapers.base import ScrapedMedia, ScrapedPost
+from social_bot.ai.media_sampler import pick_for_ai
+from social_bot.scrapers.base import ScrapedMedia, ScrapedPost
 
 
 def _post(post_type: str, n: int) -> ScrapedPost:

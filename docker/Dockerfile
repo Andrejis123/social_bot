@@ -1,5 +1,5 @@
-# Claude_Social runtime image — Python 3.12 + uv for dependency install.
-# Build from the repo root:  docker build -f docker/Dockerfile -t claude-social .
+# Social_Bot runtime image — Python 3.12 + uv for dependency install.
+# Build from the repo root:  docker build -f docker/Dockerfile -t social-bot .
 FROM python:3.12-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \

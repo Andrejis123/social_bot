@@ -8,7 +8,7 @@ update the fixtures here first and the normalizer follows.
 
 from __future__ import annotations
 
-from claude_social.scrapers.instagram import _normalize_post
+from social_bot.scrapers.instagram import _normalize_post
 
 
 def test_normalizes_single_image():

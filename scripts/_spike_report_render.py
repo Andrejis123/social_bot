@@ -18,9 +18,9 @@ from pathlib import Path
 
 from pptx import Presentation
 
-from claude_social.reports import theme
-from claude_social.reports.brand import REPO_ROOT, Brand
-from claude_social.reports.layouts import (
+from social_bot.reports import theme
+from social_bot.reports.brand import REPO_ROOT, Brand
+from social_bot.reports.layouts import (
     CategoryItem,
     CategoryPreview,
     MetricCard,

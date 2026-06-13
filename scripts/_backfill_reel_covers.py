@@ -20,14 +20,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Path setup so the script can import claude_social without -m
+# Path setup so the script can import social_bot without -m
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from claude_social.db import queries  # noqa: E402
-from claude_social.db.client import get_supabase  # noqa: E402
-from claude_social.scrapers._hiker_client import HikerClient  # noqa: E402
-from claude_social.scrapers.base import REEL_COVER_SLIDE_INDEX  # noqa: E402
-from claude_social.storage.media import build_storage_path, download_and_upload  # noqa: E402
+from social_bot.db import queries  # noqa: E402
+from social_bot.db.client import get_supabase  # noqa: E402
+from social_bot.scrapers._hiker_client import HikerClient  # noqa: E402
+from social_bot.scrapers.base import REEL_COVER_SLIDE_INDEX  # noqa: E402
+from social_bot.storage.media import build_storage_path, download_and_upload  # noqa: E402
 
 
 def _parse_dt(value: str | None) -> datetime | None:

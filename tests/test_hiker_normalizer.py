@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_social.scrapers.instagram import _normalize_post_hiker
+from social_bot.scrapers.instagram import _normalize_post_hiker
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
