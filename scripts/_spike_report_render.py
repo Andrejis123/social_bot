@@ -33,7 +33,6 @@ from social_bot.reports.layouts import (
     format_metric,
 )
 
-
 OUT_DIR = Path("/tmp/report_spike")
 
 

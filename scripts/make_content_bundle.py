@@ -20,7 +20,7 @@ from __future__ import annotations
 import sys
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from social_bot import drive
@@ -83,7 +83,7 @@ def build_bundle(client_slug: str, start: datetime, end: datetime) -> Path:
     written = 0
     skipped = 0
     with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path, blob in zip(paths, blobs):
+        for path, blob in zip(paths, blobs, strict=True):
             if blob is None:
                 skipped += 1
                 continue
@@ -106,9 +106,9 @@ def main() -> None:
     if len(sys.argv) != 4:
         sys.exit("usage: make_content_bundle.py <client_slug> <YYYY-MM-DD> <YYYY-MM-DD>")
     client_slug, start_s, end_s = sys.argv[1:]
-    start = datetime.fromisoformat(start_s).replace(tzinfo=timezone.utc)
+    start = datetime.fromisoformat(start_s).replace(tzinfo=UTC)
     end = datetime.fromisoformat(end_s).replace(
-        hour=23, minute=59, second=59, tzinfo=timezone.utc,
+        hour=23, minute=59, second=59, tzinfo=UTC,
     )
 
     zip_path = build_bundle(client_slug, start, end)

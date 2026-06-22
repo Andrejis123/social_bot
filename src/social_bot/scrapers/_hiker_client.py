@@ -14,7 +14,7 @@ the per-tier mapping logic in one place.
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -62,7 +62,7 @@ class HikerClient:
     def close(self) -> None:
         self._http.close()
 
-    def __enter__(self) -> "HikerClient":
+    def __enter__(self) -> HikerClient:
         return self
 
     def __exit__(self, *_exc: Any) -> None:
@@ -242,7 +242,7 @@ def _ts_to_datetime(ts: Any) -> datetime | None:
     """HikerAPI's /v2 returns `taken_at` as Unix epoch seconds."""
     if isinstance(ts, (int, float)):
         try:
-            return datetime.fromtimestamp(ts, tz=timezone.utc)
+            return datetime.fromtimestamp(ts, tz=UTC)
         except (OverflowError, OSError, ValueError):
             return None
     if isinstance(ts, str):

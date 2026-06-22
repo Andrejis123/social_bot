@@ -18,10 +18,10 @@ Key behaviour:
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, TypeVar
 
 from ..clients import load_client
 from ..db.client import get_supabase
@@ -80,8 +80,8 @@ class CategoryPreviewRow:
 class AccountData:
     handle: str
     account_id: str
-    posts_by_category: "OrderedDict[str, list[PostRow]]"   # sorted by count desc
-    stories_by_category: "OrderedDict[str, list[StoryRow]]"
+    posts_by_category: OrderedDict[str, list[PostRow]]   # sorted by count desc
+    stories_by_category: OrderedDict[str, list[StoryRow]]
     intro_previews: list[CategoryPreviewRow]               # capped at 4
     total_posts: int             # non-reel count (image / carousel / video)
     total_reels: int             # reel count
@@ -483,34 +483,31 @@ def _download_storage_to_cache(storage_path: str, cache_dir: Path) -> Path:
 
 UNCATEGORIZED = "(Uncategorized)"
 
-T = TypeVar("T")
-
-
-def _bucket_by_category(
+def _bucket_by_category[T](
     items: list[T],
     get_cat: Callable[[T], str | None],
     get_dt: Callable[[T], datetime],
-) -> "OrderedDict[str, list[T]]":
+) -> OrderedDict[str, list[T]]:
     """Group by ai_category, sort categories by count desc, items by date asc."""
     raw: dict[str, list[T]] = {}
     for it in items:
         raw.setdefault(get_cat(it) or UNCATEGORIZED, []).append(it)
-    ordered: "OrderedDict[str, list[T]]" = OrderedDict()
+    ordered: OrderedDict[str, list[T]] = OrderedDict()
     for cat in sorted(raw, key=lambda c: (-len(raw[c]), c)):
         ordered[cat] = sorted(raw[cat], key=get_dt)
     return ordered
 
 
-def _bucket_posts(posts: list[PostRow]) -> "OrderedDict[str, list[PostRow]]":
+def _bucket_posts(posts: list[PostRow]) -> OrderedDict[str, list[PostRow]]:
     return _bucket_by_category(posts, lambda p: p.ai_category, lambda p: p.posted_at)
 
 
-def _bucket_stories(stories: list[StoryRow]) -> "OrderedDict[str, list[StoryRow]]":
+def _bucket_stories(stories: list[StoryRow]) -> OrderedDict[str, list[StoryRow]]:
     return _bucket_by_category(stories, lambda s: s.ai_category, lambda s: s.posted_at)
 
 
 def _pick_intro_previews(
-    posts_by_category: "OrderedDict[str, list[PostRow]]",
+    posts_by_category: OrderedDict[str, list[PostRow]],
     *,
     max_previews: int = 4,
 ) -> list[CategoryPreviewRow]:

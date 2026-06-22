@@ -25,6 +25,7 @@ from ...logging import get_logger
 log = get_logger(__name__)
 
 _INLINE_MAX_BYTES = 18 * 1024 * 1024  # conservative of the 20MB Gemini limit
+_RETRY_DELAYS = [2, 5, 15]  # seconds between Gemini call retries
 
 
 @dataclass(slots=True)
@@ -75,8 +76,6 @@ def classify_with_gemini(
         },
         "required": ["category"],
     }
-
-    _RETRY_DELAYS = [2, 5, 15]
 
     last_exc: Exception | None = None
     for attempt, delay in enumerate([0] + _RETRY_DELAYS):
@@ -141,8 +140,6 @@ def describe_with_gemini(
         "properties": {"description": {"type": "string"}},
         "required": ["description"],
     }
-
-    _RETRY_DELAYS = [2, 5, 15]
 
     last_exc: Exception | None = None
     for attempt, delay in enumerate([0] + _RETRY_DELAYS):

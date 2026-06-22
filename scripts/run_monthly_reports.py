@@ -16,7 +16,7 @@ the posts/stories cron monitors).
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from social_bot.logging import get_logger
 from social_bot.reports.data import build_period
@@ -32,9 +32,9 @@ def main() -> None:
         sys.exit(
             "usage: run_monthly_reports.py <YYYY-MM-DD> <YYYY-MM-DD> [client ...]"
         )
-    start = datetime.fromisoformat(sys.argv[1]).replace(tzinfo=timezone.utc)
+    start = datetime.fromisoformat(sys.argv[1]).replace(tzinfo=UTC)
     end = datetime.fromisoformat(sys.argv[2]).replace(
-        hour=23, minute=59, second=59, tzinfo=timezone.utc,
+        hour=23, minute=59, second=59, tzinfo=UTC,
     )
     clients = sys.argv[3:] or DEFAULT_CLIENTS
     period = build_period(start, end)

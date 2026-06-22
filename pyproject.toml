@@ -45,6 +45,15 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+# E501 (line-too-long): most violations are long LLM-prompt string literals;
+# there is no autoformatter in this repo and wrapping prompts hurts readability.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Descriptive test names intentionally echo API field names (e.g. postId).
+"tests/*" = ["N802"]
+# Hiker* exception names are intentionally short (no Error suffix).
+"src/social_bot/scrapers/_hiker_client.py" = ["N818"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

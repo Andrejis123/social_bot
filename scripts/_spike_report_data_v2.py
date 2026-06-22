@@ -12,14 +12,14 @@ Prints what `data.py` returns so we can sanity-check before wiring synthesis:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from social_bot.reports.data import build_period, load_report_data
 
 CLIENT = "ecig-monitoring"
-START = datetime(2026, 4, 25, 0, 0, 0, tzinfo=timezone.utc)
-END = datetime(2026, 5, 25, 23, 59, 59, tzinfo=timezone.utc)
+START = datetime(2026, 4, 25, 0, 0, 0, tzinfo=UTC)
+END = datetime(2026, 5, 25, 23, 59, 59, tzinfo=UTC)
 
 
 def main() -> None:
@@ -38,13 +38,13 @@ def main() -> None:
               f"stories={a.total_stories}  likes={a.total_likes}  "
               f"comments={a.total_comments}")
 
-        print(f"\n  Posts by category (sorted by count desc):")
+        print("\n  Posts by category (sorted by count desc):")
         for cat, plist in a.posts_by_category.items():
             with_img = sum(1 for p in plist if p.hero_image_path)
             print(f"    {cat}: {len(plist)} posts ({with_img} with image)")
 
         if a.stories_by_category:
-            print(f"\n  Stories by category:")
+            print("\n  Stories by category:")
             for cat, slist in a.stories_by_category.items():
                 with_img = sum(1 for s in slist if s.hero_image_path)
                 print(f"    {cat}: {len(slist)} stories ({with_img} with image)")

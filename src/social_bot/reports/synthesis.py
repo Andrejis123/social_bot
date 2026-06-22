@@ -32,9 +32,8 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from typing import Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 
 from google import genai
 from google.genai import errors as genai_errors
@@ -127,7 +126,7 @@ def synthesize_category(
     # Pass 1 — clustering. Use short handles ("p1", "p2", ...) instead of
     # raw UUIDs in the prompt; LLMs reliably corrupt long opaque tokens.
     handles = _short_handles(posts)
-    posts_by_handle = dict(zip(handles, posts))
+    posts_by_handle = dict(zip(handles, posts, strict=True))
     p1_key = _cache_key(
         client_slug, period_label, category, post_ids_sorted,
         PROMPT_VERSION_PASS1, model, "pass1",
@@ -149,10 +148,13 @@ def synthesize_category(
             client_slug, period_label, category, sorted(p.id for p in cluster_posts),
             PROMPT_VERSION_PASS2, model, f"pass2:{title}",
         )
-        item_raw: dict = _cached(cluster_key, lambda: _run_pass2(
-            client, model, brand_label, category, title,
-            cluster_posts, cluster_handles,
-        ))
+        item_raw: dict = _cached(
+            cluster_key,
+            lambda title=title, cluster_posts=cluster_posts, cluster_handles=cluster_handles: _run_pass2(
+                client, model, brand_label, category, title,
+                cluster_posts, cluster_handles,
+            ),
+        )
         narrative = (item_raw.get("narrative") or "").strip()
         best_handle = (item_raw.get("best_post_id") or "").strip()
         best_post = posts_by_handle.get(best_handle)
@@ -304,7 +306,7 @@ def _build_pass1_user_prompt(brand: str, category: str, posts: Sequence[PostRow]
         f"Posts to cluster ({len(posts)}):",
         "",
     ]
-    for h, p in zip(handles, posts):
+    for h, p in zip(handles, posts, strict=True):
         cap = (p.caption or "").strip().replace("\n", " ")[:180]
         desc = (p.ai_description or "").strip().replace("\n", " ")
         date = p.posted_at.date().isoformat()
@@ -370,7 +372,7 @@ def _build_pass2_user_prompt(brand: str, category: str, cluster_title: str, post
         f"Posts in this cluster ({len(posts)}):",
         "",
     ]
-    for h, p in zip(handles, posts):
+    for h, p in zip(handles, posts, strict=True):
         cap = (p.caption or "").strip().replace("\n", " ")[:200]
         desc = (p.ai_description or "").strip().replace("\n", " ")
         date = p.posted_at.date().isoformat()

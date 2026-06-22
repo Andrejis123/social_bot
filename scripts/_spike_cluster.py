@@ -16,7 +16,7 @@ and best_post_id picks before integrating into the renderer.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from google import genai
 from google.genai import types
@@ -25,8 +25,8 @@ from social_bot.config import get_settings
 from social_bot.reports.data import build_period, load_report_data
 
 CLIENT = "ecig-monitoring"
-START = datetime(2026, 4, 25, 0, 0, 0, tzinfo=timezone.utc)
-END = datetime(2026, 5, 25, 23, 59, 59, tzinfo=timezone.utc)
+START = datetime(2026, 4, 25, 0, 0, 0, tzinfo=UTC)
+END = datetime(2026, 5, 25, 23, 59, 59, tzinfo=UTC)
 
 # (handle, category, brand_label)
 CELLS = [
@@ -192,7 +192,7 @@ def main() -> None:
         # Coverage check
         types_in_set = {p.post_type for p in posts}
         print(f"Post types in this cell: {types_in_set}")
-        print(f"Posts (id snippets):")
+        print("Posts (id snippets):")
         for p in posts:
             print(f"  {p.id[:8]}  {p.posted_at.date()}  {p.post_type:8}  "
                   f"likes={p.like_count:4d}  com={p.comment_count:3d}")

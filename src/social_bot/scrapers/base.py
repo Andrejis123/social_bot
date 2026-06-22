@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
 
-
 # Sentinel slide index for the cover thumbnail paired with a video/reel.
 # Kept high enough that it can't collide with a carousel's natural indices.
 REEL_COVER_SLIDE_INDEX = 99

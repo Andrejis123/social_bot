@@ -11,6 +11,7 @@ Set DRY_RUN=1 to count without writing.
 """
 import os
 import sys
+
 from social_bot.db.client import get_supabase
 
 DRY = os.environ.get("DRY_RUN") == "1"

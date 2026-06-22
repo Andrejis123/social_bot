@@ -7,7 +7,7 @@ Failures are logged and swallowed — a notification failure must never crash a 
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 

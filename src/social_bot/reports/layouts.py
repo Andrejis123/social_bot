@@ -25,7 +25,6 @@ from pptx.util import Emu, Inches, Pt
 from . import theme
 from .brand import Brand
 
-
 # ────────────────────────────────────────────────────────────────────────
 # Data structures consumed by the renderer
 # ────────────────────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ unit tests on individual functions don't exercise.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,7 +30,7 @@ def _post(pid: str, *, media_count: int = 1) -> ScrapedPost:
         post_type="image",
         caption="a caption",
         permalink=f"https://instagram.com/p/{pid}/",
-        posted_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        posted_at=datetime(2026, 4, 1, tzinfo=UTC),
         media=[
             ScrapedMedia(slide_index=i, media_type="image", source_url=f"https://cdn/{pid}-{i}.jpg")
             for i in range(media_count)
@@ -53,10 +53,10 @@ class _FakeScraper:
 
 def _patch_ingest(monkeypatch, *, posts, existing_ids=frozenset(), classify_raises=False):
     """Fake the whole ingest_posts external surface. Returns a call recorder."""
-    from social_bot.db import queries
-    from social_bot.pipeline import ingest_posts as ip
     import social_bot.ai.classifier as classifier_mod
     import social_bot.notifications.telegram as telegram_mod
+    from social_bot.db import queries
+    from social_bot.pipeline import ingest_posts as ip
 
     rec: dict[str, list] = defaultdict(list)
 

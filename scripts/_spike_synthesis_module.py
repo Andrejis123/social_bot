@@ -10,14 +10,14 @@ Second pass exercises the cache (should be silent, no LLM calls).
 from __future__ import annotations
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from social_bot.reports.data import build_period, load_report_data
 from social_bot.reports.synthesis import synthesize_category
 
 CLIENT = "ecig-monitoring"
-START = datetime(2026, 4, 25, 0, 0, 0, tzinfo=timezone.utc)
-END = datetime(2026, 5, 25, 23, 59, 59, tzinfo=timezone.utc)
+START = datetime(2026, 4, 25, 0, 0, 0, tzinfo=UTC)
+END = datetime(2026, 5, 25, 23, 59, 59, tzinfo=UTC)
 
 CELLS = [
     ("iqos_cz", "Events", "IQOS"),
@@ -34,7 +34,6 @@ def audit(item, posts_by_id) -> list[str]:
         flags.append("dash_in_narrative")
     if "—" in item.title or " - " in item.title or " -- " in item.title:
         flags.append("dash_in_title")
-    p = posts_by_id.get(item.best_post_id)
     return flags
 
 

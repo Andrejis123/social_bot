@@ -10,9 +10,8 @@ No AI classification for stories in Phase 1 — we can add it later by reusing
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
 import time
+from urllib.parse import urlparse
 
 from ..clients import AccountConfig, LoadedClient, load_client
 from ..config import get_settings

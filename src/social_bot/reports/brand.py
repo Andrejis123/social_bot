@@ -44,7 +44,7 @@ class Brand:
         return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5
 
     @classmethod
-    def load(cls, slug: str) -> "Brand":
+    def load(cls, slug: str) -> Brand:
         path = REPO_ROOT / "assets" / "clients" / slug / "brand.yaml"
         if not path.exists():
             path = REPO_ROOT / "assets" / "clients" / "_default" / "brand.yaml"

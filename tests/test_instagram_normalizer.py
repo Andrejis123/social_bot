@@ -8,7 +8,7 @@ update the fixtures here first and the normalizer follows.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -129,7 +129,7 @@ def test_carousel_video_child_gets_cover():
 # get-leads fallback normalizer (`_normalize_post_fallback`)
 # -------------------------
 
-_POSTED = datetime(2026, 4, 1, tzinfo=timezone.utc)
+_POSTED = datetime(2026, 4, 1, tzinfo=UTC)
 
 
 def test_fallback_image_post():

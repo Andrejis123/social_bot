@@ -28,7 +28,7 @@ the stories cron.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from apify_client import ApifyClient
@@ -482,7 +482,7 @@ def _parse_ts(value: Any) -> datetime | None:
             return None
     if isinstance(value, (int, float)):
         # Unix seconds.
-        return datetime.fromtimestamp(value, tz=timezone.utc)
+        return datetime.fromtimestamp(value, tz=UTC)
     return None
 
 
@@ -610,7 +610,7 @@ def _parse_iso_date(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+        return datetime.fromisoformat(value).replace(tzinfo=UTC)
     except ValueError:
         return None
 
@@ -628,9 +628,7 @@ def _ts_outside_window(
         return False
     if since is not None and ts < since:
         return True
-    if until is not None and ts > until:
-        return True
-    return False
+    return until is not None and ts > until
 
 
 def _normalize_post_fallback(

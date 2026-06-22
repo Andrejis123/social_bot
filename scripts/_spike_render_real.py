@@ -22,7 +22,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from social_bot.reports.data import build_period
 from social_bot.reports.renderer import (
@@ -30,7 +30,6 @@ from social_bot.reports.renderer import (
     generate_report,
     publish_report,
 )
-
 
 SOFFICE = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
 
@@ -41,8 +40,8 @@ def main() -> None:
     args = [a for a in args if a != "--publish"]
     client_slug = args[0] if args else "ecig-monitoring"
 
-    start = datetime(2026, 4, 25, tzinfo=timezone.utc)
-    end = datetime(2026, 5, 25, 23, 59, 59, tzinfo=timezone.utc)
+    start = datetime(2026, 4, 25, tzinfo=UTC)
+    end = datetime(2026, 5, 25, 23, 59, 59, tzinfo=UTC)
     period = build_period(start, end)
 
     print(f"→ generating report for {client_slug} ({period.label})"

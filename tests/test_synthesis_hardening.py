@@ -14,7 +14,7 @@ edit can't silently drop the protection.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from social_bot.reports import synthesis
 from social_bot.reports.data import PostRow
@@ -34,7 +34,7 @@ def _post(caption: str) -> PostRow:
     return PostRow(
         id="00000000-0000-0000-0000-000000000001",
         platform_post_id="123",
-        posted_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        posted_at=datetime(2026, 4, 1, tzinfo=UTC),
         post_type="image",
         caption=caption,
         ai_category="News",
