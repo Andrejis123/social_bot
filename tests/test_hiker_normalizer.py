@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from social_bot.scrapers.base import REEL_COVER_SLIDE_INDEX
 from social_bot.scrapers.instagram import _normalize_post_hiker
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -52,12 +53,21 @@ def test_reel_from_agapeslovensko():
     assert post.comment_count == 8
     assert post.caption is not None and "Bod zlomu" in post.caption
 
-    assert len(post.media) == 1
+    # A reel yields two media rows: the video at slide 0, plus its cover image
+    # stored at the sentinel index at scrape time (so reports don't chase stale
+    # IG URLs later). Regression guard for the scrape-time cover-storage feature.
+    assert len(post.media) == 2
     m = post.media[0]
+    assert m.slide_index == 0
     assert m.media_type == "video"
     assert m.source_url.startswith("https://")
     assert ".mp4" in m.source_url  # CDN URLs have query params after the extension
     assert m.duration_seconds is not None and m.duration_seconds > 0
+
+    cover = post.media[1]
+    assert cover.slide_index == REEL_COVER_SLIDE_INDEX
+    assert cover.media_type == "image"
+    assert cover.source_url.startswith("https://")
 
 
 def test_single_image_from_pulzeczech():
