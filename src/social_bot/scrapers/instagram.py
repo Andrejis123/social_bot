@@ -416,7 +416,10 @@ class InstagramScraper:
         assert self._hiker is not None
         cached = user_id is not None
         if not user_id:
-            user_id = self._hiker.lookup_user_id(handle)
+            # HikerAPI intermittently 404s UserNotFound for valid accounts; retry
+            # once here so the stories cron doesn't fall through to paid Apify on
+            # a transient miss.
+            user_id = self._hiker.lookup_user_id(handle, retry_on_404=True)
         self.discovered_platform_account_id = user_id
 
         log.info("hiker.stories.start", handle=handle, cached_user_id=cached)

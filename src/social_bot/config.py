@@ -40,6 +40,12 @@ class Settings(BaseSettings):
         "get-leads/all-in-one-instagram-scraper",
         alias="APIFY_INSTAGRAM_FALLBACK_ACTOR",
     )
+    # Facebook posts: official Apify actor, anonymous (no cookies needed for
+    # public pages — verified 2026-06-23). Restricted/age-gated pages are a
+    # future cookie'd tier (Phase B).
+    apify_facebook_actor: str = Field(
+        "apify/facebook-posts-scraper", alias="APIFY_FACEBOOK_ACTOR"
+    )
     instagram_cookies: str | None = Field(None, alias="INSTAGRAM_COOKIES")
     instagram_cookie_country: str = Field("SK", alias="INSTAGRAM_COOKIE_COUNTRY")
     instagram_cookies_backup: str | None = Field(None, alias="INSTAGRAM_COOKIES_BACKUP")

@@ -16,7 +16,7 @@ from ..clients import AccountConfig, LoadedClient, load_client
 from ..db import queries
 from ..logging import get_logger
 from ..scrapers.base import ScrapedPost
-from ..scrapers.registry import get_scraper
+from ..scrapers.registry import get_scraper, supported_platforms
 from ..storage.media import build_storage_path, download_and_upload
 from .run_context import RunContext
 
@@ -30,13 +30,16 @@ def ingest_posts_for_client(
     since: str | None = None,
     until: str | None = None,
     account_handle: str | None = None,
+    platform: str | None = None,
     enable_ai: bool = True,
 ) -> list[str]:
     """
     Run the posts pipeline for active accounts in the given client config.
 
     If account_handle is set, only that account is processed — used by cron
-    entries that schedule each account individually.
+    entries that schedule each account individually. If platform is set, only
+    accounts on that platform are processed — needed because the same handle can
+    exist on more than one platform (e.g. agapeslovensko on both IG and FB).
 
     Returns the list of run_history IDs created (one per account).
     """
@@ -50,12 +53,16 @@ def ingest_posts_for_client(
     else:
         accounts = loaded.active_accounts
 
+    if platform:
+        accounts = [a for a in accounts if a.platform == platform]
+
     run_ids: list[str] = []
     for account in accounts:
-        if account.platform != "instagram":
-            # Phase 1: only Instagram. Other platforms ignored (not an error).
+        if account.platform not in supported_platforms():
+            # Platform has no registered scraper yet (e.g. youtube/tiktok).
+            # Ignored, not an error.
             log.info(
-                "pipeline.account.skipped_not_instagram",
+                "pipeline.account.skipped_unsupported_platform",
                 platform=account.platform,
                 handle=account.handle,
             )
@@ -99,6 +106,7 @@ def _ingest_one_account(
         job_name="ingest_posts",
         client_slug=loaded.slug,
         account_handle=account.handle,
+        platform=account.platform,
     ) as run:
         posts = scraper.scrape_posts(
             account.handle,

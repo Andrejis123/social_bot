@@ -33,6 +33,7 @@ class RunContext:
     job_name: str
     client_slug: str | None
     account_handle: str | None = None
+    platform: str = "instagram"
 
     run_id: str = ""
     items_total: int = 0
@@ -67,7 +68,7 @@ class RunContext:
                 run_id=self.run_id,
                 job_name=self.job_name,
                 client_name=self.client_slug or "unknown",
-                platform="instagram",
+                platform=self.platform,
                 account=self.account_handle,
             )
         except Exception as exc:
@@ -140,7 +141,7 @@ class RunContext:
                 job_name=self.job_name,
                 client_slug=self.client_slug or "",
                 client_name=self.client_slug or "unknown",
-                platform="instagram",
+                platform=self.platform,
                 status=status,
                 scraped=self.items_total,
                 new=self.items_new,

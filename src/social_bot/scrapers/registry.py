@@ -7,10 +7,12 @@ Adding a new platform: implement the `Scraper` protocol and register it here.
 from __future__ import annotations
 
 from .base import Scraper
+from .facebook import FacebookScraper
 from .instagram import InstagramScraper
 
 _REGISTRY: dict[str, type[Scraper]] = {
     "instagram": InstagramScraper,
+    "facebook": FacebookScraper,
 }
 
 

@@ -20,7 +20,7 @@ from .providers.openai import describe_with_openai
 log = get_logger(__name__)
 
 _PROMPT = """\
-You are analysing an Instagram post for a social media monitoring report.
+You are analysing a social media post for a social media monitoring report.
 
 Start with a 1-2 sentence summary capturing the main point — what the post is about \
 and its primary purpose. For example: "This post announces the launch of IQOS's new \

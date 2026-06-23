@@ -107,7 +107,9 @@ class HikerClient:
         in v2 (instagrapi-v2) shape. Empty list = no active stories (NOT an
         error). Caller is responsible for supplying `user_id`.
         """
-        data = self._get("/v2/user/stories", params={"user_id": user_id})
+        data = self._get(
+            "/v2/user/stories", params={"user_id": user_id}, retry_on_404=True
+        )
         # v2 shape:
         #   {"broadcast": ..., "reel": {"items": [...], ...} | null, "status": "ok"}
         # `reel == null` means no active stories — return empty list.
@@ -119,9 +121,11 @@ class HikerClient:
                     return items
         return []
 
-    def lookup_user_id(self, handle: str) -> str:
+    def lookup_user_id(self, handle: str, *, retry_on_404: bool = False) -> str:
         h = handle.lstrip("@")
-        data = self._get("/v2/user/by/username", params={"username": h})
+        data = self._get(
+            "/v2/user/by/username", params={"username": h}, retry_on_404=retry_on_404
+        )
         user = (data.get("user") or {}) if isinstance(data, dict) else {}
         pk = user.get("pk") or user.get("id")
         if not pk:
@@ -201,9 +205,14 @@ class HikerClient:
         )
         return collected
 
-    def _get(self, path: str, *, params: dict[str, Any]) -> Any:
+    def _get(self, path: str, *, params: dict[str, Any], retry_on_404: bool = False) -> Any:
         """GET with single retry on transient errors. Returns parsed JSON
-        (dict for most endpoints; some /v1/ endpoints return lists)."""
+        (dict for most endpoints; some /v1/ endpoints return lists).
+
+        `retry_on_404`: HikerAPI intermittently 404s UserNotFound for valid
+        accounts. Stories callers set this to retry once before treating the
+        404 as fatal; the default (posts) path keeps the fail-fast behaviour.
+        """
         for attempt in (0, 1):
             try:
                 r = self._http.get(path, params=params)
@@ -225,6 +234,10 @@ class HikerClient:
             if status in (401, 403):
                 raise HikerFatal(f"auth/key error {status}: {r.text[:200]}")
             if status == 404:
+                if retry_on_404 and attempt == 0:
+                    log.warning("hiker.404.retrying", path=path)
+                    time.sleep(5)
+                    continue
                 raise HikerFatal(f"not found 404: {r.text[:200]}")
             if 500 <= status < 600:
                 if attempt == 0:

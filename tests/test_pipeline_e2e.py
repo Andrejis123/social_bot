@@ -160,21 +160,42 @@ def test_ingest_isolates_classify_failure(monkeypatch):
     assert rec["finish_run"][0][1]["status"] == "partial"
 
 
-def test_ingest_skips_non_instagram_accounts(monkeypatch):
+def test_ingest_skips_unsupported_platforms(monkeypatch):
     from social_bot.pipeline import ingest_posts as ip
     from social_bot.pipeline.ingest_posts import ingest_posts_for_client
 
     _patch_ingest(monkeypatch, posts=[_post("100")])
-    # Override the loaded client with a non-instagram account.
-    fb = SimpleNamespace(platform="facebook", handle="fbpage", is_owned=True)
+    # A platform with no registered scraper (instagram + facebook are supported).
+    yt = SimpleNamespace(platform="youtube", handle="somechannel", is_owned=True)
     loaded = SimpleNamespace(
-        slug="testclient", name="Test Client", active_accounts=[fb],
-        config=SimpleNamespace(accounts=[fb], ai=SimpleNamespace(prompt_version="v1")),
+        slug="testclient", name="Test Client", active_accounts=[yt],
+        config=SimpleNamespace(accounts=[yt], ai=SimpleNamespace(prompt_version="v1")),
     )
     monkeypatch.setattr(ip, "load_client", lambda slug: loaded)
 
     run_ids = ingest_posts_for_client("testclient")
-    assert run_ids == []  # facebook ignored in Phase 1, not an error
+    assert run_ids == []  # unsupported platform ignored, not an error
+
+
+def test_platform_filter_selects_one_platform(monkeypatch):
+    from social_bot.pipeline import ingest_posts as ip
+    from social_bot.pipeline.ingest_posts import ingest_posts_for_client
+
+    _patch_ingest(monkeypatch, posts=[_post("100")])
+    # Same handle on two platforms (the real agapeslovensko IG+FB case).
+    ig = SimpleNamespace(platform="instagram", handle="dup", is_owned=True)
+    fb = SimpleNamespace(platform="facebook", handle="dup", is_owned=True)
+    loaded = SimpleNamespace(
+        slug="testclient", name="Test Client", active_accounts=[ig, fb],
+        config=SimpleNamespace(accounts=[ig, fb], ai=SimpleNamespace(prompt_version="v1")),
+    )
+    monkeypatch.setattr(ip, "load_client", lambda slug: loaded)
+
+    # Without --platform, the shared handle matches both accounts (2 runs).
+    assert len(ingest_posts_for_client("testclient", account_handle="dup")) == 2
+    # --platform narrows to just the facebook account.
+    run_ids = ingest_posts_for_client("testclient", account_handle="dup", platform="facebook")
+    assert len(run_ids) == 1
 
 
 # =====================================================================

@@ -42,6 +42,8 @@ def ingest_stories_for_client(
 
     run_ids: list[str] = []
     for account in accounts:
+        # Stories are Instagram-only for now; Facebook stories are deferred
+        # (Phase B — weak/expensive tooling, needs an authenticated session).
         if account.platform != "instagram":
             continue
         run_ids.append(
@@ -70,6 +72,7 @@ def _ingest_one_account(
         job_name="ingest_stories",
         client_slug=loaded.slug,
         account_handle=account.handle,
+        platform=account.platform,
     ) as run:
         stories = scraper.scrape_stories(account.handle, platform_account_id=cached_pk)
         discovered_pk = getattr(scraper, "discovered_platform_account_id", None)
