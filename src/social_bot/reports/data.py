@@ -59,6 +59,13 @@ class PostRow:
     comment_count: int
     hero_image_path: Path | None
 
+    @property
+    def engagement(self) -> tuple[int, int]:
+        """Ranking key for picking the strongest post: total interactions,
+        then likes as the tie-breaker. Single source of truth for every
+        'highest-engagement' selection across the report pipeline."""
+        return (self.like_count + self.comment_count, self.like_count)
+
 
 @dataclass
 class StoryRow:
@@ -520,7 +527,7 @@ def _pick_intro_previews(
         with_image = [p for p in plist if p.hero_image_path is not None]
         if not with_image:
             continue
-        top = max(with_image, key=lambda p: (p.like_count + p.comment_count, p.like_count))
+        top = max(with_image, key=lambda p: p.engagement)
         previews.append(CategoryPreviewRow(
             name=cat,
             image_path=top.hero_image_path,  # type: ignore[arg-type]

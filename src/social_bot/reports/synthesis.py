@@ -232,6 +232,13 @@ Output only the prose. No preamble, no labels, no markdown.
 """ + _UNTRUSTED_EVIDENCE_CLAUSE
 
 
+def _flatten(text: str | None, max_chars: int | None = None) -> str:
+    """Collapse caption/description evidence to a single line for the prompt:
+    coalesce None, strip, fold newlines to spaces, optionally truncate."""
+    s = (text or "").strip().replace("\n", " ")
+    return s[:max_chars] if max_chars is not None else s
+
+
 def _build_pass0_user_prompt(brand: str, category: str, period_label: str, posts: Sequence[PostRow]) -> str:
     lines = [
         f"Brand: {brand}",
@@ -243,8 +250,8 @@ def _build_pass0_user_prompt(brand: str, category: str, period_label: str, posts
         "",
     ]
     for i, p in enumerate(posts, 1):
-        cap = (p.caption or "").strip().replace("\n", " ")[:300]
-        desc = (p.ai_description or "").strip().replace("\n", " ")
+        cap = _flatten(p.caption, 300)
+        desc = _flatten(p.ai_description)
         date = p.posted_at.date().isoformat()
         kind = p.post_type
         lines.append(f"--- Post {i} ({date}, {kind}) ---")
@@ -307,8 +314,8 @@ def _build_pass1_user_prompt(brand: str, category: str, posts: Sequence[PostRow]
         "",
     ]
     for h, p in zip(handles, posts, strict=True):
-        cap = (p.caption or "").strip().replace("\n", " ")[:180]
-        desc = (p.ai_description or "").strip().replace("\n", " ")
+        cap = _flatten(p.caption, 180)
+        desc = _flatten(p.ai_description)
         date = p.posted_at.date().isoformat()
         lines.append(f"--- id: {h}")
         lines.append(f"  date: {date}  type: {p.post_type}")
@@ -373,8 +380,8 @@ def _build_pass2_user_prompt(brand: str, category: str, cluster_title: str, post
         "",
     ]
     for h, p in zip(handles, posts, strict=True):
-        cap = (p.caption or "").strip().replace("\n", " ")[:200]
-        desc = (p.ai_description or "").strip().replace("\n", " ")
+        cap = _flatten(p.caption, 200)
+        desc = _flatten(p.ai_description)
         date = p.posted_at.date().isoformat()
         lines.append(f"--- id: {h}")
         lines.append(f"  date: {date}  type: {p.post_type}  "
@@ -445,7 +452,7 @@ def _pick_fallback(cluster_posts: Sequence[PostRow]) -> PostRow:
     non-reel; if the cluster is reel-only, pick the highest-engagement reel."""
     non_reels = [p for p in cluster_posts if p.post_type != "reel"]
     pool = non_reels or list(cluster_posts)
-    return max(pool, key=lambda p: (p.like_count + p.comment_count, p.like_count))
+    return max(pool, key=lambda p: p.engagement)
 
 
 # ─────────────────────────────────────────────────────────────────────

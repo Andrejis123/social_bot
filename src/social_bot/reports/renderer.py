@@ -116,7 +116,7 @@ def _build_report(
         ]
         if all_posts:
             top = max(all_posts,
-                      key=lambda p: (p.like_count + p.comment_count, p.like_count))
+                      key=lambda p: p.engagement)
             hero_override = top.hero_image_path
 
     draw_cover(
@@ -348,7 +348,7 @@ def _build_intro_previews(
             filler_pool.extend(
                 sorted(
                     [p for p in posts if p.hero_image_path is not None],
-                    key=lambda p: (p.like_count + p.comment_count, p.like_count),
+                    key=lambda p: p.engagement,
                     reverse=True,
                 )
             )
@@ -472,7 +472,7 @@ def _resolve_cluster_image(
 
     cat_pool = sorted(
         [p for p in posts_by_id.values() if p.hero_image_path],
-        key=lambda p: (p.like_count + p.comment_count, p.like_count),
+        key=lambda p: p.engagement,
         reverse=True,
     )
     for p in cat_pool:
@@ -481,7 +481,7 @@ def _resolve_cluster_image(
 
     acct_pool = sorted(
         [p for p in account_posts if p.hero_image_path],
-        key=lambda p: (p.like_count + p.comment_count, p.like_count),
+        key=lambda p: p.engagement,
         reverse=True,
     )
     for p in acct_pool:
