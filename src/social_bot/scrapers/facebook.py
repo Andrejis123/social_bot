@@ -7,9 +7,9 @@ returns full month history with per-reaction counts and view counts for a
 normal public Page (no cookies needed). The `get-leads` all-in-one actor's
 anonymous mode is crippled (1 post), so we use the official actor here.
 
-Anonymous captures expose only the cover image for videos/reels (no playable
-mp4), so video posts normalize to a single cover `image` media item — the same
-way Instagram reel covers are stored.
+Video/reel posts carry a playable mp4 (`videoDeliveryLegacyFields`, HD or SD)
+plus a cover image; we normalize both — the video, and the cover at
+REEL_COVER_SLIDE_INDEX (same convention as Instagram reels).
 
 Phase B (deferred): restricted / age-gated Pages (alcohol/tobacco) and stories.
 Those need a logged-in 18+ burner; whether the official actor can read them
@@ -28,7 +28,7 @@ from apify_client import ApifyClient
 
 from ..config import get_settings
 from ..logging import get_logger
-from .base import ScrapedMedia, ScrapedPost, ScrapedStory
+from .base import REEL_COVER_SLIDE_INDEX, ScrapedMedia, ScrapedPost, ScrapedStory
 
 log = get_logger(__name__)
 
@@ -131,35 +131,63 @@ def _normalize_post_facebook(item: dict[str, Any]) -> ScrapedPost:
 
 
 def _extract_media(item: dict[str, Any]) -> list[ScrapedMedia]:
-    """Map the raw media[] to cover/photo images, skipping junk elements.
+    """Map the raw media[] to ScrapedMedia, skipping junk elements.
 
+    Photos -> one image. Videos/reels -> the playable mp4 plus its cover image
+    (cover at REEL_COVER_SLIDE_INDEX, matching the Instagram reel convention).
     Carousels can carry a leading element with `__typename: None` and no URL,
-    and there are edge types (e.g. ProfilePicAttachmentMedia) with no usable
-    source — both are filtered out so they don't become empty media rows.
+    and edge types (e.g. ProfilePicAttachmentMedia) have no usable source -
+    both are filtered out so they don't become empty media rows.
     """
     out: list[ScrapedMedia] = []
     for raw in item.get("media") or []:
         if not isinstance(raw, dict):
             continue
-        src = _media_source_url(raw)
-        if not src:
-            continue
-        out.append(
-            ScrapedMedia(
-                slide_index=len(out),
-                media_type="image",  # anon FB exposes only photos / video covers
-                source_url=src,
-            )
-        )
+        typename = raw.get("__typename")
+        if typename == "Video":
+            cover = (raw.get("thumbnailImage") or {}).get("uri") or raw.get("thumbnail")
+            video_url = _video_url(raw)
+            if video_url:
+                out.append(
+                    ScrapedMedia(
+                        slide_index=len(out),
+                        media_type="video",
+                        source_url=video_url,
+                        duration_seconds=_ms_to_seconds(raw.get("playable_duration_in_ms")),
+                        width=raw.get("original_width") or raw.get("width"),
+                        height=raw.get("original_height") or raw.get("height"),
+                    )
+                )
+                if cover:
+                    out.append(
+                        ScrapedMedia(
+                            slide_index=REEL_COVER_SLIDE_INDEX,
+                            media_type="image",
+                            source_url=cover,
+                        )
+                    )
+            elif cover:  # no playable url - keep the cover so the post isn't blank
+                out.append(
+                    ScrapedMedia(slide_index=len(out), media_type="image", source_url=cover)
+                )
+        elif typename == "Photo":
+            src = (raw.get("photo_image") or {}).get("uri") or raw.get("thumbnail")
+            if src:
+                out.append(
+                    ScrapedMedia(slide_index=len(out), media_type="image", source_url=src)
+                )
     return out
 
 
-def _media_source_url(media: dict[str, Any]) -> str | None:
-    typename = media.get("__typename")
-    if typename == "Photo":
-        return (media.get("photo_image") or {}).get("uri") or media.get("thumbnail")
-    if typename == "Video":
-        return (media.get("thumbnailImage") or {}).get("uri") or media.get("thumbnail")
+def _video_url(media: dict[str, Any]) -> str | None:
+    """Playable mp4 for a video item - prefer HD, fall back to SD."""
+    fields = media.get("videoDeliveryLegacyFields") or {}
+    return fields.get("browser_native_hd_url") or fields.get("browser_native_sd_url")
+
+
+def _ms_to_seconds(ms: Any) -> float | None:
+    if isinstance(ms, (int, float)) and not isinstance(ms, bool):
+        return round(ms / 1000, 3)
     return None
 
 

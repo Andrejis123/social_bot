@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from social_bot.scrapers.base import REEL_COVER_SLIDE_INDEX
 from social_bot.scrapers.facebook import _normalize_post_facebook
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -45,10 +46,15 @@ def test_reel_maps_video_metrics_and_cover() -> None:
     assert post.share_count == 43
     assert post.view_count == 5273
     assert post.save_count is None  # FB has no saves
-    # Anonymous capture exposes only the cover image, not a playable mp4.
-    assert len(post.media) == 1
-    assert post.media[0].media_type == "image"
-    assert post.media[0].source_url.startswith("https://")
+    # A reel yields the playable video plus its cover (cover at the sentinel
+    # slide index, matching the Instagram reel convention).
+    assert len(post.media) == 2
+    video = next(m for m in post.media if m.media_type == "video")
+    cover = next(m for m in post.media if m.media_type == "image")
+    assert video.source_url.startswith("https://")
+    assert video.duration_seconds and video.duration_seconds > 0
+    assert cover.slide_index == REEL_COVER_SLIDE_INDEX
+    assert cover.source_url.startswith("https://")
     assert post.permalink == "https://www.facebook.com/100080397431532/posts/1064573886232516"
     assert post.posted_at is not None
     assert (post.posted_at.year, post.posted_at.month, post.posted_at.day) == (2026, 6, 22)
