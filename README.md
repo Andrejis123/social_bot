@@ -2,7 +2,12 @@
 
 Automated social-media performance tracking + monthly client reports.
 
-Currently runs Instagram posts + stories scraping → AI classification + description (Gemini) → time-series engagement storage → monthly .pptx reports published to Supabase + Google Drive. Multi-platform (FB, YouTube, TikTok) is queued behind a real-client driver.
+Currently runs Instagram (posts + stories) and Facebook (public-page posts)
+scraping → AI classification + description (Gemini) → time-series engagement
+storage → monthly .pptx reports published to Supabase + Google Drive. Facebook
+is posts-only for now (stories + restricted/age-gated pages are a later phase,
+and Facebook is not yet wired into cron); YouTube and TikTok remain queued
+behind a real-client driver.
 
 **Live:** 3 clients × 6 active accounts, nightly stories cron + weekly posts cron, monthly report cron wired but disabled until first paying client.
 
