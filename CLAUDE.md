@@ -1,0 +1,43 @@
+# CLAUDE.md
+
+Agent operating notes. The **README.md** and **justfile** are the canonical
+sources of truth for how this repo runs and deploys — consult them (and the
+recipes in `just --list`) *before* exploring or before trusting memory for an
+operational procedure. This file adds agent-specific context only; keep it lean
+and don't duplicate what README/justfile already state.
+
+## Deploy — this is routine, I do it directly
+
+I have SSH access to the VPS (key authorized) and run deploys myself. Do **not**
+punt the pull/rebuild back to the user.
+
+The VPS cron runs each job from the **built Docker image** `social-bot:latest`
+(`docker run ... social-bot python -m scripts.<x>`), so a `git pull` alone does
+**not** update running code — **the image must be rebuilt.** Only `config/` is
+volume-mounted (YAML/prompt edits need no rebuild); `src/`, `scripts/`,
+`assets/`, `migrations/` are baked into the image.
+
+```bash
+git push origin main      # from Mac
+just deploy               # ssh + git pull + docker compose build on the VPS
+just deploy-check         # confirm the new code is actually in the image
+```
+
+VPS host + path live in the `deploy` recipe (justfile) and in memory
+(`tools_inventory`). Repo path on the VPS is `/opt/social-bot/`.
+
+## Running tooling
+
+- Run Python via `uv run ...` or the project venv `.venv/bin/python` — the
+  package isn't on system Python. (`uv run` may warn about a stale
+  `Claude_Social/.venv` VIRTUAL_ENV; it still works.)
+- `just check` = ruff + mypy + pytest. Lint is green — keep it green.
+
+## Conventions
+
+- **No Claude branding** on user-visible surfaces (README, pyproject, docs,
+  commit messages); omit Co-Authored-By by default. (This file is agent config,
+  not a user-visible surface.)
+- **No em-dashes** in rendered reports or in synthesis prompts.
+- The report-subject brand renders as a verbatim `@handle` in synthesis prose
+  and in notifications — never the client name/slug.
