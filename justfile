@@ -3,6 +3,9 @@
 
 set dotenv-load := true
 
+vps      := "root@161.35.170.254"
+vps_path := "/opt/social-bot"
+
 default:
     @just --list
 
@@ -91,3 +94,20 @@ check:
 fmt:
     uv run ruff format .
     uv run ruff check --fix .
+
+# ---------------------------------------------------------------------------
+# Deploy — the VPS cron runs each job as `docker run ... social-bot python -m
+# scripts.<x>`, i.e. from the BUILT image `social-bot:latest`. A `git pull`
+# alone does NOT update running code — the image MUST be rebuilt. Only config/
+# is volume-mounted (docker/docker-compose.yml), so YAML/prompt edits take
+# effect without a rebuild; src/, scripts/, assets/, migrations/ are baked in.
+# ---------------------------------------------------------------------------
+
+# Pull latest main on the VPS and rebuild the image. Run after `git push`.
+deploy:
+    ssh {{vps}} 'cd {{vps_path}} && git pull && docker compose -f docker/docker-compose.yml build'
+    @echo "Deployed. Smoke-test with: just deploy-check"
+
+# Confirm the freshly built image actually contains the new code.
+deploy-check:
+    ssh {{vps}} 'cd {{vps_path}} && docker run --rm --env-file .env social-bot python -c "import social_bot; print(\"image OK\")"'
