@@ -204,9 +204,9 @@ def _build_story_storage_path(
     media_type: str,
     source_url: str,
 ) -> str:
-    from datetime import datetime
+    from datetime import UTC, datetime
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     ext = _ext_from_url(source_url, media_type)
     return (
         f"{client_slug}/{account_handle}/{platform}/stories/"

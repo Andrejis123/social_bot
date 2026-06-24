@@ -16,7 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from social_bot.ai.providers.gemini import ClassifyResult
-from social_bot.scrapers.base import ScrapedMedia, ScrapedPost
+from social_bot.scrapers.base import ScrapedMedia, ScrapedPost, ScrapedStory
 
 # =====================================================================
 # ingest_posts
@@ -196,6 +196,268 @@ def test_platform_filter_selects_one_platform(monkeypatch):
     # --platform narrows to just the facebook account.
     run_ids = ingest_posts_for_client("testclient", account_handle="dup", platform="facebook")
     assert len(run_ids) == 1
+
+
+# =====================================================================
+# ingest_stories
+#
+# Near-identical to ingest_posts, but stories diverge in three ways the
+# orchestration must honor:
+#   * existing story -> skip entirely (no metrics path; stories don't update)
+#   * Instagram-only (an active facebook account is skipped, not an error)
+#   * media download is per-item isolated -> a 403 (signed-URL expiry) on one
+#     media must not lose the story row.
+# =====================================================================
+
+
+def _story(sid: str, *, media_count: int = 1, with_source: bool = True) -> ScrapedStory:
+    return ScrapedStory(
+        platform="instagram",
+        platform_story_id=sid,
+        posted_at=datetime(2026, 4, 1, tzinfo=UTC),
+        expires_at=datetime(2026, 4, 2, tzinfo=UTC),
+        caption="a story caption",
+        media=[
+            ScrapedMedia(
+                slide_index=i,
+                media_type="image",
+                source_url=(f"https://cdn/{sid}-{i}.jpg" if with_source else ""),
+            )
+            for i in range(media_count)
+        ],
+        raw={"id": sid},
+    )
+
+
+class _FakeStoryScraper:
+    discovered_platform_account_id = "pk-123"
+
+    def __init__(self, stories: list[ScrapedStory]):
+        self._stories = stories
+
+    def scrape_stories(self, handle, **kwargs):
+        return self._stories
+
+
+def _patch_ingest_stories(
+    monkeypatch,
+    *,
+    stories,
+    existing_ids=frozenset(),
+    classify_raises=False,
+    classify_returns_none=False,
+    download_raises=False,
+):
+    """Fake the whole ingest_stories external surface. Returns a call recorder."""
+    import social_bot.ai.classifier as classifier_mod
+    import social_bot.notifications.telegram as telegram_mod
+    from social_bot.db import queries
+    from social_bot.pipeline import ingest_stories as ist
+
+    rec: dict[str, list] = defaultdict(list)
+
+    def _record(name, ret=None):
+        def fn(*args, **kwargs):
+            rec[name].append((args, kwargs))
+            return ret
+        return fn
+
+    # db.queries — shared module object (ingest_stories AND run_context).
+    monkeypatch.setattr(queries, "start_run", _record("start_run", "run-1"))
+    monkeypatch.setattr(queries, "finish_run", _record("finish_run"))
+    monkeypatch.setattr(queries, "record_item_error", _record("record_item_error"))
+    monkeypatch.setattr(queries, "upsert_client", _record("upsert_client", "client-1"))
+    monkeypatch.setattr(
+        queries, "upsert_account",
+        _record("upsert_account", {"id": "acct-1", "platform_account_id": None}),
+    )
+    monkeypatch.setattr(
+        queries, "find_story",
+        lambda platform, sid: ({"id": f"existing-{sid}"} if sid in existing_ids else None),
+    )
+    monkeypatch.setattr(queries, "insert_story", _record("insert_story", "story-1"))
+    monkeypatch.setattr(queries, "update_story_ai", _record("update_story_ai"))
+    monkeypatch.setattr(
+        queries, "increment_story_ai_attempts", _record("increment_story_ai_attempts")
+    )
+    monkeypatch.setattr(queries, "set_account_platform_id", _record("set_account_platform_id"))
+
+    # media download+upload boundary (httpx GET + Supabase upload + insert_story_media
+    # all live behind _download_and_record; stub it whole like posts stub
+    # download_and_upload).
+    def _download(**kwargs):
+        rec["download_and_record"].append(((), kwargs))
+        # mimics a 403 on an expired signed URL surfacing from httpx, only on the
+        # first media — proves the per-media loop continues to the next one.
+        if download_raises and len(rec["download_and_record"]) == 1:
+            raise RuntimeError("403 Forbidden")
+    monkeypatch.setattr(ist, "_download_and_record", _download)
+
+    # scraper + client config
+    monkeypatch.setattr(ist, "get_scraper", lambda platform: _FakeStoryScraper(stories))
+    account = SimpleNamespace(platform="instagram", handle="testhandle", is_owned=True)
+    loaded = SimpleNamespace(
+        slug="testclient",
+        name="Test Client",
+        active_accounts=[account],
+        config=SimpleNamespace(accounts=[account], ai=SimpleNamespace(prompt_version="v1")),
+    )
+    monkeypatch.setattr(ist, "load_client", lambda slug: loaded)
+
+    # AI classify (lazy-imported from the classifier module as classify_story)
+    def _classify_story(*, story, loaded_client):
+        if classify_raises:
+            raise RuntimeError("gemini down")
+        if classify_returns_none:
+            return None  # no prompt configured -> clean skip
+        return ClassifyResult(
+            category="News", confidence=0.9, reasoning="r", provider="gemini"
+        )
+    monkeypatch.setattr(classifier_mod, "classify_story", _classify_story)
+
+    # silence Telegram (RunContext fires notify_run_started/completed lazily)
+    monkeypatch.setattr(telegram_mod, "notify_run_started", lambda *a, **k: None)
+    monkeypatch.setattr(telegram_mod, "notify_run_completed", lambda *a, **k: None)
+    monkeypatch.setattr(telegram_mod, "send", lambda *a, **k: None)
+    monkeypatch.setattr("time.sleep", lambda *a, **k: None)
+
+    return rec
+
+
+def test_ingest_new_and_existing_stories(monkeypatch):
+    from social_bot.pipeline.ingest_stories import ingest_stories_for_client
+
+    rec = _patch_ingest_stories(
+        monkeypatch,
+        stories=[_story("100"), _story("200")],
+        existing_ids={"200"},  # 200 already known -> skipped entirely
+    )
+    run_ids = ingest_stories_for_client("testclient")
+
+    assert run_ids == ["run-1"]
+    # Only the new story is inserted; the existing one is skipped (no metrics
+    # path for stories — they're either new or known).
+    assert len(rec["insert_story"]) == 1
+    assert len(rec["download_and_record"]) == 1   # its single media row
+    assert len(rec["update_story_ai"]) == 1       # classified the new story only
+    # discovered pk differed from cached None -> persisted
+    assert len(rec["set_account_platform_id"]) == 1
+    assert rec["finish_run"][0][1]["status"] == "success"
+    assert rec["finish_run"][0][1]["items_new"] == 1
+
+
+def test_ingest_stories_isolates_classify_failure(monkeypatch):
+    from social_bot.pipeline.ingest_stories import ingest_stories_for_client
+
+    rec = _patch_ingest_stories(
+        monkeypatch, stories=[_story("100")], classify_raises=True
+    )
+    run_ids = ingest_stories_for_client("testclient")
+
+    assert run_ids == ["run-1"]
+    # Story + media are persisted before classify runs, so an AI failure must
+    # not lose them.
+    assert len(rec["insert_story"]) == 1
+    assert len(rec["download_and_record"]) == 1
+    assert len(rec["update_story_ai"]) == 0
+    assert len(rec["increment_story_ai_attempts"]) == 1
+    # The story still counted as new (it was inserted before classify) -> partial.
+    assert rec["finish_run"][0][1]["status"] == "partial"
+
+
+def test_ingest_stories_classify_none_is_clean_skip(monkeypatch):
+    # classify_story returns None when no prompt is configured — a clean skip,
+    # distinct from the raise path: no AI write, no retry, no error.
+    from social_bot.pipeline.ingest_stories import ingest_stories_for_client
+
+    rec = _patch_ingest_stories(
+        monkeypatch, stories=[_story("100")], classify_returns_none=True
+    )
+    run_ids = ingest_stories_for_client("testclient")
+
+    assert run_ids == ["run-1"]
+    assert len(rec["insert_story"]) == 1
+    assert len(rec["update_story_ai"]) == 0
+    assert len(rec["increment_story_ai_attempts"]) == 0
+    assert rec["finish_run"][0][1]["status"] == "success"
+
+
+def test_ingest_stories_isolates_media_403(monkeypatch):
+    # A 403 on an expired signed URL (or any download failure) is isolated per
+    # media: the story row still persists and the run records a download error.
+    from social_bot.pipeline.ingest_stories import ingest_stories_for_client
+
+    rec = _patch_ingest_stories(
+        monkeypatch, stories=[_story("100", media_count=2)], download_raises=True
+    )
+    run_ids = ingest_stories_for_client("testclient")
+
+    assert run_ids == ["run-1"]
+    assert len(rec["insert_story"]) == 1            # story row survives the 403
+    # First media 403s, but the loop continues to the second -> both attempted.
+    assert len(rec["download_and_record"]) == 2
+    err_stages = [k.get("stage") for (_a, k) in rec["record_item_error"]]
+    assert "download_media" in err_stages
+    # The story was still inserted and classified -> it counts as new.
+    assert rec["finish_run"][0][1]["items_new"] == 1
+
+
+def test_ingest_stories_skips_media_without_source_url(monkeypatch):
+    # Story media with no source_url is skipped with a download_media error,
+    # never passed to the downloader.
+    from social_bot.pipeline.ingest_stories import ingest_stories_for_client
+
+    rec = _patch_ingest_stories(
+        monkeypatch, stories=[_story("100", with_source=False)]
+    )
+    ingest_stories_for_client("testclient")
+
+    assert len(rec["insert_story"]) == 1
+    assert len(rec["download_and_record"]) == 0     # never reached the downloader
+    err_stages = [k.get("stage") for (_a, k) in rec["record_item_error"]]
+    assert "download_media" in err_stages
+
+
+def test_ingest_stories_instagram_only(monkeypatch):
+    # Stories are Instagram-only; an active facebook account is skipped, not an
+    # error (Facebook stories are Phase B).
+    from social_bot.pipeline import ingest_stories as ist
+    from social_bot.pipeline.ingest_stories import ingest_stories_for_client
+
+    _patch_ingest_stories(monkeypatch, stories=[_story("100")])
+    fb = SimpleNamespace(platform="facebook", handle="fbonly", is_owned=True)
+    loaded = SimpleNamespace(
+        slug="testclient", name="Test Client", active_accounts=[fb],
+        config=SimpleNamespace(accounts=[fb], ai=SimpleNamespace(prompt_version="v1")),
+    )
+    monkeypatch.setattr(ist, "load_client", lambda slug: loaded)
+
+    run_ids = ingest_stories_for_client("testclient")
+    assert run_ids == []  # facebook story account ignored, not an error
+
+
+def test_ingest_stories_account_override_ignores_active_flag(monkeypatch):
+    # client.yaml is authoritative: an explicit --account override scrapes that
+    # handle even when it is not in active_accounts (DB is_active can be stale).
+    from social_bot.pipeline import ingest_stories as ist
+    from social_bot.pipeline.ingest_stories import ingest_stories_for_client
+
+    _patch_ingest_stories(monkeypatch, stories=[_story("100")])
+    inactive = SimpleNamespace(platform="instagram", handle="paused", is_owned=True)
+    loaded = SimpleNamespace(
+        slug="testclient", name="Test Client",
+        active_accounts=[],                 # not active per the DB-derived view
+        config=SimpleNamespace(             # but present in client.yaml
+            accounts=[inactive], ai=SimpleNamespace(prompt_version="v1")
+        ),
+    )
+    monkeypatch.setattr(ist, "load_client", lambda slug: loaded)
+
+    # No override -> nothing runs (follows active_accounts).
+    assert ingest_stories_for_client("testclient") == []
+    # Explicit override -> runs against the YAML account regardless of active.
+    run_ids = ingest_stories_for_client("testclient", account_handle="paused")
+    assert run_ids == ["run-1"]
 
 
 # =====================================================================

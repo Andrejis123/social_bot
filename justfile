@@ -108,6 +108,8 @@ deploy:
     ssh {{vps}} 'cd {{vps_path}} && git pull && docker compose -f docker/docker-compose.yml build'
     @echo "Deployed. Smoke-test with: just deploy-check"
 
-# Confirm the freshly built image actually contains the new code.
+# Confirm the freshly built image actually contains the new code AND the two
+# prod-only regressions we've been bitten by (dev-only python-pptx, missing
+# assets/ COPY). Check logic lives in scripts/deploy_check.py — extend it there.
 deploy-check:
-    ssh {{vps}} 'cd {{vps_path}} && docker run --rm --env-file .env social-bot python -c "import social_bot; print(\"image OK\")"'
+    ssh {{vps}} 'cd {{vps_path}} && docker run --rm --env-file .env social-bot python -m scripts.deploy_check'

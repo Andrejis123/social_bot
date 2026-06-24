@@ -6,6 +6,19 @@ recipes in `just --list`) *before* exploring or before trusting memory for an
 operational procedure. This file adds agent-specific context only; keep it lean
 and don't duplicate what README/justfile already state.
 
+## Working style — align before building, verify after
+
+For any multi-step or ambiguous task, lock scope and architecture with me
+*before* writing code: batch your open questions into a **single** round
+(AskUserQuestion), propose the design/tradeoffs, and start only once you're ~95%
+sure what I want. Small or clearly-specified tasks: just do them — don't
+manufacture questions or turn this into an interrogation.
+
+Before marking anything done: exercise the code with **real data**, confirm the
+ROOT CAUSE rather than patching a symptom, and show the verification output.
+"Tests pass" is not "prod behavior is fixed" — for pipeline/deploy work prefer an
+actual run (and `just deploy-check` after a deploy).
+
 ## Deploy — this is routine, I do it directly
 
 I have SSH access to the VPS (key authorized) and run deploys myself. Do **not**
@@ -32,6 +45,8 @@ VPS host + path live in the `deploy` recipe (justfile) and in memory
   package isn't on system Python. (`uv run` may warn about a stale
   `Claude_Social/.venv` VIRTUAL_ENV; it still works.)
 - `just check` = ruff + mypy + pytest. Lint is green — keep it green.
+- Pre-commit hook runs `/security-review` + `/simplify` automatically. Never
+  skip with `--no-verify`; fix the underlying issue instead.
 
 ## Conventions
 
