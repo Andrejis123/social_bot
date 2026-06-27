@@ -5,7 +5,7 @@ accounts:
   - platform: instagram
     handle: "dennikn"
     is_owned: true
-    is_active: true
+    is_active: false
 
 ai:
   provider: gemini

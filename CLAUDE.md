@@ -56,3 +56,14 @@ VPS host + path live in the `deploy` recipe (justfile) and in memory
 - **No em-dashes** in rendered reports or in synthesis prompts.
 - The report-subject brand renders as a verbatim `@handle` in synthesis prose
   and in notifications — never the client name/slug.
+
+## Memory & todos
+
+- **Todos**: Notion DB `31ff3868-b444-8054-aa56-e3f8db6d8720` (Project = Social_Bot)
+  is the canonical task list. `memory/todos.md` is a session log + Notion pointer only.
+- **Memory files** (5 total): `project_journal.md` (live state, cron, decisions, session log),
+  `feedback.md` (style rules + working preferences), `tools_inventory.md` (APIs + infra),
+  `user_profile.md`, `todos.md`.
+- **End of session**: update `project_journal.md` (decisions made, files changed); mark
+  completed Notion tasks Done via API (token in `.env` as `NOTION_API_TOKEN`).
+- **Subagents doing web search/fetch**: prefer `model: haiku` to save tokens.

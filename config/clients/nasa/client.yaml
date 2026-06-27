@@ -8,7 +8,7 @@ accounts:
   - platform: instagram
     handle: "nasa"         # (no leading @)
     is_owned: true         # false = competitor account
-    is_active: true
+    is_active: false
 
 ai:
   provider: gemini         # 'gemini' | 'openai'
