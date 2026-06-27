@@ -50,7 +50,6 @@ def main(
              "standalone via --platform facebook).",
     ),
 ) -> None:
-    platform_filter = None if platform == "all" else platform
     start_dt = datetime.fromisoformat(start).replace(tzinfo=UTC)
     end_dt = datetime.fromisoformat(end).replace(
         hour=23, minute=59, second=59, tzinfo=UTC,
@@ -65,7 +64,7 @@ def main(
     failures: list[str] = []
     for slug in slugs:
         try:
-            path, uploaded = publish_report(slug, period, platform=platform_filter)
+            path, uploaded = publish_report(slug, period, platform=None if platform == "all" else platform)
             log.info(
                 "monthly_reports.client_done",
                 client=slug, pptx=str(path), supabase_url=uploaded.signed_url,

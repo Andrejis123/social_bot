@@ -78,16 +78,16 @@ def _compress_image(im: Image.Image, target_w_emu: int, target_h_emu: int) -> io
     max_w = max(1, int(target_w_emu * _DPI_TARGET / _EMU_PER_INCH))
     max_h = max(1, int(target_h_emu * _DPI_TARGET / _EMU_PER_INCH))
     if im.width > max_w or im.height > max_h:
-        im = im.copy()
         im.thumbnail((max_w, max_h), Image.LANCZOS)
-    if im.mode in ("RGBA", "P", "LA"):
-        if im.mode == "P":
+    if im.mode != "RGB":
+        if im.mode in ("P", "LA"):
             im = im.convert("RGBA")
-        bg = Image.new("RGB", im.size, (255, 255, 255))
-        bg.paste(im, mask=im.split()[-1] if im.mode in ("RGBA", "LA") else None)
-        im = bg
-    elif im.mode != "RGB":
-        im = im.convert("RGB")
+        if im.mode == "RGBA":
+            bg = Image.new("RGB", im.size, (255, 255, 255))
+            bg.paste(im, mask=im.split()[-1])
+            im = bg
+        else:
+            im = im.convert("RGB")
     buf = io.BytesIO()
     im.save(buf, format="JPEG", quality=_JPEG_QUALITY, optimize=True)
     buf.seek(0)
