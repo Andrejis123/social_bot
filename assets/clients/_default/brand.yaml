@@ -1,29 +1,25 @@
-# Default brand fallback profile.
-# Loaded by reports/brand.py when a client has no assets/clients/<slug>/brand.yaml.
-# Currently a copy of the agape palette as a working placeholder — swap the
-# logo + this palette when an in-house brand is finalized.
+# Social Bot house brand — loaded as fallback for any client without a slug-specific brand.yaml.
+# Palette: #293681 / #4274D9 / #95CCDD / #D0E7E6
 
-name: Default
+name: Social Bot
 website: ""
-logo_path: assets/clients/_default/logo.jpg
+# No logo for now.
 
 palette:
-  primary: "#F57C1E"
-  secondary: "#10172A"
   background: "#FFFFFF"
-  text: "#10172A"
-  accent: "#F57C1E"
-  navy_light: "#1F2A4A"
-  orange_light: "#FFA866"
+  text:       "#293681"
+  primary:    "#4274D9"
+  secondary:  "#293681"
+  accent:     "#95CCDD"
   stripe_colors:
-    - "#F57C1E"
-    - "#F57C1E"
-    - "#F57C1E"
-    - "#F57C1E"
-    - "#F57C1E"
-    - "#F57C1E"
-    - "#F57C1E"
-    - "#F57C1E"
+    - "#293681"
+    - "#4274D9"
+    - "#95CCDD"
+    - "#D0E7E6"
+    - "#293681"
+    - "#4274D9"
+    - "#95CCDD"
+    - "#D0E7E6"
 
 typography:
   heading: "Montserrat, sans-serif"

@@ -10,7 +10,7 @@ Per-client colors / logos live in brand.yaml; only geometry lives here.
 """
 from __future__ import annotations
 
-from pptx.util import Inches, Pt
+from pptx.util import Cm, Inches, Pt
 
 SLIDE_W_IN = 13.333333
 SLIDE_H_IN = 7.5
@@ -67,17 +67,15 @@ class Cover:
 
 
 class Content:
-    """Top-row chrome shared by all dark-theme content slides
-    (Intro, Overview, CategorySection, etc.)."""
+    """Top-row chrome shared by all content slides."""
     title_left = Inches(CONTENT_TITLE_LEFT_IN)
-    title_top = Inches(CONTENT_TOP_ROW_Y_IN)
+    title_top = Cm(0.47)
     title_w = Inches(8.00)
-    title_h = Inches(0.75)
+    title_h = Inches(0.90)
     title_font_pt = Pt(28)
 
-    # Logo aligned with title at y=0.40
     logo_left = Inches(CONTENT_LOGO_LEFT_IN)
-    logo_top = Inches(CONTENT_TOP_ROW_Y_IN)
+    logo_top = Cm(0.47)
     logo_w = Inches(1.35)
     logo_h = Inches(0.585)
 
@@ -108,9 +106,9 @@ class CategorySection:
 
     # Prose summary above the items (the category-level narrative)
     narrative_left = Inches(CONTENT_TITLE_LEFT_IN)
-    narrative_top = Inches(1.30)
+    narrative_top = Cm(4.0)
     narrative_w = Inches(12.30)
-    narrative_h = Inches(1.50)
+    narrative_h = Inches(1.10)
     narrative_font_pt = Pt(16)
 
     img_top = Inches(2.95)
@@ -164,9 +162,9 @@ class Intro:
     """Per-account intro: title + categories description + 3 or 4 representative images."""
     # Body describes what categories are covered
     body_left = Inches(CONTENT_TITLE_LEFT_IN)
-    body_top = Inches(1.40)
+    body_top = Cm(4.0)
     body_w = Inches(12.30)
-    body_h = Inches(1.60)
+    body_h = Inches(1.45)
     body_font_pt = Pt(18)
 
     # 3 or 4 representative images. Rendered with a small gap between columns
@@ -197,24 +195,19 @@ def intro_col_left(index: int, n_in_page: int):
 # ─────────────────────────────────────────────────────────────────────────
 
 class LightTitle:
-    """Shared header strip used by light-theme slides."""
+    """Shared header strip used by light-theme slides (Summary, AdditionalData)."""
     title_left = Inches(CONTENT_TITLE_LEFT_IN)
-    title_top = Inches(CONTENT_TOP_ROW_Y_IN)
+    title_top = Cm(0.47)
     title_w = Inches(8.00)
-    title_h = Inches(0.75)
+    title_h = Inches(0.90)
     title_font_pt = Pt(28)
 
-    # Logo top-right
     logo_left = Inches(CONTENT_LOGO_LEFT_IN)
-    logo_top = Inches(CONTENT_TOP_ROW_Y_IN)
+    logo_top = Cm(0.47)
     logo_w = Inches(1.35)
     logo_h = Inches(0.585)
 
-    # Rainbow stripe tucks under the title text. Was 1.30 (collided with
-    # CategorySection.narrative_top=1.30 on light-theme category slides);
-    # 1.10 sits right under the title text edge so the strip frames the
-    # title instead of fronting the narrative.
-    rainbow_top = Inches(1.10)
+    rainbow_top = Cm(2.8)
     rainbow_h = Inches(0.15)
     rainbow_count = 8
     rainbow_seg_w = Inches(SLIDE_W_IN / rainbow_count)

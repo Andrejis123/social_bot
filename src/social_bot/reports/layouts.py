@@ -64,6 +64,35 @@ class MetricCard:
 
 LIGHT_BG = RGBColor(0xFF, 0xFF, 0xFF)
 
+_EMU_PER_INCH = 914400
+_DPI_TARGET = 150   # downscale target; well above screen, adequate for print
+_JPEG_QUALITY = 80
+
+
+def _compress_image(im: Image.Image, target_w_emu: int, target_h_emu: int) -> io.BytesIO:
+    """Downscale to display dimensions at _DPI_TARGET, then encode as JPEG.
+
+    Keeps images no larger than they need to be for the box they fill.
+    RGBA/palette modes are flattened onto white before JPEG encoding.
+    """
+    max_w = max(1, int(target_w_emu * _DPI_TARGET / _EMU_PER_INCH))
+    max_h = max(1, int(target_h_emu * _DPI_TARGET / _EMU_PER_INCH))
+    if im.width > max_w or im.height > max_h:
+        im = im.copy()
+        im.thumbnail((max_w, max_h), Image.LANCZOS)
+    if im.mode in ("RGBA", "P", "LA"):
+        if im.mode == "P":
+            im = im.convert("RGBA")
+        bg = Image.new("RGB", im.size, (255, 255, 255))
+        bg.paste(im, mask=im.split()[-1] if im.mode in ("RGBA", "LA") else None)
+        im = bg
+    elif im.mode != "RGB":
+        im = im.convert("RGB")
+    buf = io.BytesIO()
+    im.save(buf, format="JPEG", quality=_JPEG_QUALITY, optimize=True)
+    buf.seek(0)
+    return buf
+
 
 def _clean_text(text: str) -> str:
     """Strip em-dashes and dash-separators from rendered text.
@@ -146,10 +175,9 @@ def _place_image(slide, img_path: Path, left, top, width, height,
                 placed_w = int(height * src_ratio)
             placed_left = left + (target_w_emu - int(placed_w)) // 2
             placed_top = top + (target_h_emu - int(placed_h)) // 2
-            slide.shapes.add_picture(
-                str(img_path), placed_left, placed_top,
-                width=placed_w, height=placed_h,
-            )
+            buf = _compress_image(im, int(placed_w), int(placed_h))
+            slide.shapes.add_picture(buf, placed_left, placed_top,
+                                     width=placed_w, height=placed_h)
             return
 
         if src_ratio > target_ratio:
@@ -162,12 +190,7 @@ def _place_image(slide, img_path: Path, left, top, width, height,
             box = (0, offset, src_w, offset + new_h)
 
         cropped = im.crop(box)
-        if cropped.mode not in ("RGB", "RGBA"):
-            cropped = cropped.convert("RGBA")
-
-        buf = io.BytesIO()
-        cropped.save(buf, format="PNG")
-        buf.seek(0)
+        buf = _compress_image(cropped, target_w_emu, target_h_emu)
 
     slide.shapes.add_picture(buf, left, top, width=width, height=height)
 

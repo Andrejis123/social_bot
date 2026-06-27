@@ -49,6 +49,11 @@ select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
 # there is no autoformatter in this repo and wrapping prompts hurts readability.
 ignore = ["E501"]
 
+[tool.ruff.lint.flake8-bugbear]
+# typer's Argument/Option sentinels are immutable; calling them in argument
+# defaults is the documented typer idiom, not a B008 mutable-default bug.
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+
 [tool.ruff.lint.per-file-ignores]
 # Descriptive test names intentionally echo API field names (e.g. postId).
 "tests/*" = ["N802"]

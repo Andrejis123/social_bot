@@ -84,20 +84,28 @@ class _BuiltReport:
     slide_count: int
 
 
+PLATFORM_LABELS = {
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+}
+
+
 def _build_report(
     client_slug: str,
     period: Period,
     *,
     out_dir: Path = DEFAULT_OUT_DIR,
+    platform: str | None = None,
 ) -> _BuiltReport:
     """Render the deck and return path + ReportData + slide count.
 
     Internal helper so `generate_report` and `publish_report` share one
-    Supabase fetch + one Presentation instance.
+    Supabase fetch + one Presentation instance. When `platform` is set, only
+    that platform's accounts are included (a standalone single-platform deck).
     """
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    report = load_report_data(client_slug, period)
+    report = load_report_data(client_slug, period, platform=platform)
     brand = Brand.load(client_slug)
 
     prs = Presentation()
@@ -119,9 +127,14 @@ def _build_report(
                       key=lambda p: p.engagement)
             hero_override = top.hero_image_path
 
+    platform_label = PLATFORM_LABELS.get(platform or "")
+    cover_title = (
+        f"{platform_label} Activity Monitoring" if platform_label
+        else "Social Media Monitoring"
+    )
     draw_cover(
         prs, brand,
-        title="Social Media Monitoring",
+        title=cover_title,
         subtitle=f"for {report.client_name}",
         period=period.label,
         hero_override=hero_override,
@@ -140,7 +153,8 @@ def _build_report(
         .replace("–", "-")   # en-dash from period labels
         .replace("—", "-")   # em-dash, defense in depth
     )
-    out_path = out_dir / f"{client_slug}_{safe_period}.pptx"
+    platform_tag = f"{platform}_" if platform else ""
+    out_path = out_dir / f"{client_slug}_{platform_tag}{safe_period}.pptx"
     prs.save(out_path)
     slide_count = len(prs.slides)
     log.info(
@@ -156,9 +170,14 @@ def generate_report(
     period: Period,
     *,
     out_dir: Path = DEFAULT_OUT_DIR,
+    platform: str | None = None,
 ) -> Path:
-    """Build the per-client monthly deck. Returns the saved .pptx path."""
-    return _build_report(client_slug, period, out_dir=out_dir).path
+    """Build the per-client monthly deck. Returns the saved .pptx path.
+
+    When `platform` is set (e.g. "facebook"), only that platform's accounts
+    are included — a standalone single-platform deck.
+    """
+    return _build_report(client_slug, period, out_dir=out_dir, platform=platform).path
 
 
 def publish_report(
@@ -166,13 +185,14 @@ def publish_report(
     period: Period,
     *,
     out_dir: Path = DEFAULT_OUT_DIR,
+    platform: str | None = None,
 ) -> tuple[Path, UploadedReport]:
     """Render, upload to Supabase, and notify on Telegram.
 
     Notification failures are swallowed by telegram.send (per its contract);
     upload failures bubble.
     """
-    built = _build_report(client_slug, period, out_dir=out_dir)
+    built = _build_report(client_slug, period, out_dir=out_dir, platform=platform)
     uploaded = upload_report(client_slug, built.path)
 
     # Drive upload is best-effort: failure must not break the existing
@@ -598,7 +618,8 @@ def _find_collab_synthesis(synth_by_cat: dict[str, CategorySynthesis]) -> Catego
     Different clients name this differently (ecig: 'Collaborations'; agape may
     not have one at all). Tries a few common spellings.
     """
-    candidates = ("collaborations", "collaboration", "partnerships", "partners")
+    candidates = ("collaborations", "collaboration", "partnerships", "partners",
+                  "influencer", "influencers")
     for cat_name, synth in synth_by_cat.items():
         if cat_name.lower() in candidates:
             return synth

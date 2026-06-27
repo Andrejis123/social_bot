@@ -86,6 +86,7 @@ class CategoryPreviewRow:
 @dataclass
 class AccountData:
     handle: str
+    platform: str
     account_id: str
     posts_by_category: OrderedDict[str, list[PostRow]]   # sorted by count desc
     stories_by_category: OrderedDict[str, list[StoryRow]]
@@ -119,6 +120,7 @@ def load_report_data(
     *,
     cache_dir: Path = DEFAULT_CACHE_DIR,
     include_inactive: bool = False,
+    platform: str | None = None,
 ) -> ReportData:
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -128,20 +130,26 @@ def load_report_data(
     wanted = (
         loaded.config.accounts if include_inactive else loaded.active_accounts
     )
-    wanted_handles = [a.handle for a in wanted]
+    # Optional single-platform report (e.g. a standalone Facebook deck).
+    if platform is not None:
+        wanted = [a for a in wanted if a.platform == platform]
 
     client = _fetch_client(client_slug)
-    accounts_meta = _fetch_accounts_by_handle(
-        client["id"], wanted_handles
-    )
+    accounts_meta = _fetch_accounts(client["id"])
 
-    # Preserve the order declared in client.yaml.
-    meta_by_handle = {m["handle"]: m for m in accounts_meta}
+    # The same handle can exist on multiple platforms (e.g. agapeslovensko on
+    # both instagram and facebook), so accounts are keyed by the (platform,
+    # handle) natural key — never by handle alone, which collides. Resolution
+    # happens once here; everything downstream uses account_id.
+    meta_by_key = {(m["platform"], m["handle"]): m for m in accounts_meta}
     accounts: list[AccountData] = []
-    for handle in wanted_handles:
-        meta = meta_by_handle.get(handle)
+    for acct in wanted:  # preserve the order declared in client.yaml
+        meta = meta_by_key.get((acct.platform, acct.handle))
         if not meta:
-            log.warning("report.account_missing_in_db", client=client_slug, handle=handle)
+            log.warning(
+                "report.account_missing_in_db",
+                client=client_slug, platform=acct.platform, handle=acct.handle,
+            )
             continue
         accounts.append(_build_account_data(meta, period, cache_dir, client_slug))
 
@@ -184,16 +192,18 @@ def _fetch_client(slug: str) -> dict:
     return res.data[0]
 
 
-def _fetch_accounts_by_handle(client_id: str, handles: list[str]) -> list[dict]:
-    """Return account rows matching the handles in client.yaml."""
-    if not handles:
-        return []
+def _fetch_accounts(client_id: str) -> list[dict]:
+    """Return all account rows for a client.
+
+    A client has only a handful of accounts, so we fetch them all in one
+    round-trip and match on the (platform, handle) natural key in Python,
+    rather than building a tuple-IN filter PostgREST handles awkwardly.
+    """
     sb = get_supabase()
     res = (
         sb.table("accounts")
-        .select("id, handle, is_active")
+        .select("id, handle, platform, is_active")
         .eq("client_id", client_id)
-        .in_("handle", handles)
         .execute()
     )
     return res.data or []
@@ -203,6 +213,7 @@ def _build_account_data(
     meta: dict, period: Period, cache_dir: Path, client_slug: str,
 ) -> AccountData:
     handle = meta["handle"]
+    platform = meta["platform"]
     account_id = meta["id"]
 
     post_rows_raw = _fetch_posts(account_id, period)
@@ -219,7 +230,7 @@ def _build_account_data(
     for r in post_rows_raw:
         m = metrics.get(r["id"], {})
         hero = _resolve_post_hero(
-            r, post_media.get(r["id"], []), cache_dir, handle, client_slug,
+            r, post_media.get(r["id"], []), cache_dir, handle, client_slug, platform,
         )
         posts.append(PostRow(
             id=r["id"],
@@ -251,6 +262,7 @@ def _build_account_data(
 
     return AccountData(
         handle=handle,
+        platform=platform,
         account_id=account_id,
         posts_by_category=posts_by_category,
         stories_by_category=stories_by_category,
@@ -367,14 +379,15 @@ def _resolve_post_hero(
     cache_dir: Path,
     handle: str,
     client_slug: str,
+    platform: str,
 ) -> Path | None:
     """Pick an image to represent this post; download to cache.
 
     Order:
     1. Existing media row with media_type='image', lowest slide_index.
-    2. If post is video/reel only: self-heal — fetch cover from raw_payload,
-       upload to Supabase Storage as a new media row (slide_index=99),
-       then return that path.
+    2. If post is an Instagram video/reel only: self-heal — fetch cover from
+       raw_payload, upload to Supabase Storage as a new media row
+       (slide_index=99), then return that path.
     3. Give up and return None.
     """
     images = [m for m in media_rows if m.get("media_type") == "image"]
@@ -384,7 +397,12 @@ def _resolve_post_hero(
         if storage_path:
             return _download_storage_to_cache(storage_path, cache_dir)
 
-    # No image in storage. Try to heal from raw_payload (reels mostly).
+    # No image in storage. Healing mines IG-shaped raw_payload and writes an
+    # instagram/... storage path, so it only applies to Instagram. Facebook
+    # stores reel covers at scrape time, so a missing FB cover just means no
+    # hero (the renderer falls back accordingly).
+    if platform != "instagram":
+        return None
     return _heal_reel_cover(post_row, handle, client_slug, cache_dir)
 
 
