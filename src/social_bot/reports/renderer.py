@@ -36,9 +36,11 @@ from pathlib import Path
 from pptx import Presentation
 
 from .. import drive
+from ..config import get_settings
 from ..logging import get_logger
 from ..notifications import telegram
 from ..storage.reports import UploadedReport, upload_report
+from ..storage.synthesis import load_latest_synthesis_artifact, save_synthesis_artifact
 from . import theme
 from .brand import Brand
 from .data import (
@@ -62,6 +64,7 @@ from .layouts import (
     format_metric,
 )
 from .synthesis import (
+    PROMPT_VERSIONS,
     CategorySynthesis,
     ClusterItem,
     synthesize_category,
@@ -96,17 +99,50 @@ def _build_report(
     *,
     out_dir: Path = DEFAULT_OUT_DIR,
     platform: str | None = None,
+    reuse_synthesis: bool = False,
 ) -> _BuiltReport:
     """Render the deck and return path + ReportData + slide count.
 
     Internal helper so `generate_report` and `publish_report` share one
     Supabase fetch + one Presentation instance. When `platform` is set, only
     that platform's accounts are included (a standalone single-platform deck).
+
+    When `reuse_synthesis=True`, skips all LLM calls and loads the most recent
+    synthesis artifact from Supabase for this client+period+platform. Use this
+    to render color/layout variants without burning new LLM passes.
     """
+    platform_key = platform or "instagram"
+    settings = get_settings()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     report = load_report_data(client_slug, period, platform=platform)
     brand = Brand.load(client_slug)
+
+    # Load precomputed synthesis when requested.
+    precomputed_all: dict[str, dict[str, CategorySynthesis]] | None = None
+    if reuse_synthesis:
+        blob = load_latest_synthesis_artifact(
+            client_slug=client_slug,
+            period_label=period.label,
+            platform=platform_key,
+        )
+        if blob is None:
+            raise RuntimeError(
+                f"No synthesis artifact found for {client_slug} / {period.label} / {platform_key}. "
+                "Run without --reuse-synthesis first to generate one."
+            )
+        precomputed_all = {
+            handle: {
+                cat: CategorySynthesis.from_dict(synth_dict)
+                for cat, synth_dict in cats.items()
+            }
+            for handle, cats in blob.items()
+        }
+        log.info(
+            "report.reuse_synthesis",
+            client=client_slug, period=period.label, platform=platform_key,
+            accounts=len(precomputed_all),
+        )
 
     prs = Presentation()
     prs.slide_width = theme.SLIDE_W
@@ -127,7 +163,7 @@ def _build_report(
                       key=lambda p: p.engagement)
             hero_override = top.hero_image_path
 
-    platform_label = PLATFORM_LABELS.get(platform or "")
+    platform_label = PLATFORM_LABELS.get(platform_key)
     cover_title = (
         f"{platform_label} Activity Monitoring" if platform_label
         else "Social Media Monitoring"
@@ -140,9 +176,31 @@ def _build_report(
         hero_override=hero_override,
     )
 
-    # Per-account block
+    # Per-account block. Collect synthesis when running fresh (to persist as artifact).
+    collected_synth: dict[str, dict[str, CategorySynthesis]] = {}
     for account in report.accounts:
-        _render_account(prs, brand, account, report, period)
+        precomputed = precomputed_all.get(account.handle) if precomputed_all else None
+        synth_by_cat = _render_account(
+            prs, brand, account, report, period, precomputed=precomputed,
+        )
+        if precomputed_all is None:
+            collected_synth[account.handle] = synth_by_cat
+
+    if precomputed_all is None:
+        try:
+            save_synthesis_artifact(
+                client_slug=client_slug,
+                period_label=period.label,
+                platform=platform_key,
+                model=settings.gemini_model,
+                prompt_versions=PROMPT_VERSIONS,
+                artifact={
+                    handle: {cat: s.to_dict() for cat, s in cats.items()}
+                    for handle, cats in collected_synth.items()
+                },
+            )
+        except Exception as exc:
+            log.warning("report.synthesis_artifact_save_failed", error=str(exc))
 
     # Filename doubles as the Supabase Storage key — strip any character that
     # Supabase's `InvalidKey` validator rejects (en/em dashes, etc.).
@@ -171,13 +229,17 @@ def generate_report(
     *,
     out_dir: Path = DEFAULT_OUT_DIR,
     platform: str | None = None,
+    reuse_synthesis: bool = False,
 ) -> Path:
     """Build the per-client monthly deck. Returns the saved .pptx path.
 
     When `platform` is set (e.g. "facebook"), only that platform's accounts
     are included — a standalone single-platform deck.
     """
-    return _build_report(client_slug, period, out_dir=out_dir, platform=platform).path
+    return _build_report(
+        client_slug, period, out_dir=out_dir, platform=platform,
+        reuse_synthesis=reuse_synthesis,
+    ).path
 
 
 def publish_report(
@@ -186,13 +248,17 @@ def publish_report(
     *,
     out_dir: Path = DEFAULT_OUT_DIR,
     platform: str | None = None,
+    reuse_synthesis: bool = False,
 ) -> tuple[Path, UploadedReport]:
     """Render, upload to Supabase, and notify on Telegram.
 
     Notification failures are swallowed by telegram.send (per its contract);
     upload failures bubble.
     """
-    built = _build_report(client_slug, period, out_dir=out_dir, platform=platform)
+    built = _build_report(
+        client_slug, period, out_dir=out_dir, platform=platform,
+        reuse_synthesis=reuse_synthesis,
+    )
     uploaded = upload_report(client_slug, built.path)
 
     # Drive upload is best-effort: failure must not break the existing
@@ -226,7 +292,9 @@ def publish_report(
 def _render_account(
     prs: Presentation, brand: Brand,
     account: AccountData, report: ReportData, period: Period,
-) -> None:
+    *,
+    precomputed: dict[str, CategorySynthesis] | None = None,
+) -> dict[str, CategorySynthesis]:
     handle = account.handle
     display = f"@{handle}"
 
@@ -260,13 +328,16 @@ def _render_account(
     account_posts = [p for _, posts in real_cats for p in posts]
     used_paths: set[str] = set()
     for cat, posts in real_cats:
-        synth = synthesize_category(
-            client_slug=report.client_slug,
-            period_label=period.label,
-            brand_label=display,   # "@handle" — Pass 0 v2 references this verbatim
-            category=cat,
-            posts=posts,
-        )
+        if precomputed and cat in precomputed:
+            synth = precomputed[cat]
+        else:
+            synth = synthesize_category(
+                client_slug=report.client_slug,
+                period_label=period.label,
+                brand_label=display,   # "@handle" — Pass 0 v2 references this verbatim
+                category=cat,
+                posts=posts,
+            )
         synth_by_cat[cat] = synth
 
         items = _items_from_synthesis(synth, posts, account_posts, used_paths)
@@ -332,6 +403,8 @@ def _render_account(
         title=f"{display}: Additional Data",
         cards=_additional_data_placeholders(),
     )
+
+    return synth_by_cat
 
 
 # ─────────────────────────────────────────────────────────────────────

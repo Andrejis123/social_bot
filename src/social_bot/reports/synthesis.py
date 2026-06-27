@@ -29,6 +29,7 @@ without changing inputs costs zero LLM calls.
 """
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import time
@@ -52,6 +53,13 @@ PROMPT_VERSION_PASS2 = "v4"  # v4: anti prompt-injection clause; v3: report-subj
 PROMPT_VERSION_PAGE = "v3"   # v3: inherits Pass-0 v3 (anti-injection clause)
 
 CACHE_DIR = REPO_ROOT / ".cache" / "synthesis"
+
+PROMPT_VERSIONS: dict[str, str] = {
+    "pass0": PROMPT_VERSION_PASS0,
+    "pass1": PROMPT_VERSION_PASS1,
+    "pass2": PROMPT_VERSION_PASS2,
+    "page":  PROMPT_VERSION_PAGE,
+}
 
 # Captions are scraped from third parties — including, for competitor-monitoring
 # clients, genuinely adversarial accounts that control their own caption text.
@@ -86,6 +94,25 @@ class CategorySynthesis:
     @property
     def cluster_titles(self) -> list[str]:
         return [i.title for i in self.items]
+
+    def to_dict(self) -> dict:
+        return dataclasses.asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict) -> CategorySynthesis:
+        return CategorySynthesis(
+            category=d["category"],
+            category_narrative=d["category_narrative"],
+            items=[
+                ClusterItem(
+                    title=i["title"],
+                    narrative=i["narrative"],
+                    best_post_id=i["best_post_id"],
+                    post_ids=i["post_ids"],
+                )
+                for i in d["items"]
+            ],
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────

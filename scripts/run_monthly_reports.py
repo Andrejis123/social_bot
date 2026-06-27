@@ -49,6 +49,11 @@ def main(
              "Defaults to instagram (unified deck is IG-only for now; FB ships "
              "standalone via --platform facebook).",
     ),
+    reuse_synthesis: bool = typer.Option(
+        False, "--reuse-synthesis",
+        help="Skip LLM passes and reuse the most recent synthesis artifact from "
+             "Supabase. Use when rendering color/layout variants of an existing report.",
+    ),
 ) -> None:
     start_dt = datetime.fromisoformat(start).replace(tzinfo=UTC)
     end_dt = datetime.fromisoformat(end).replace(
@@ -64,7 +69,11 @@ def main(
     failures: list[str] = []
     for slug in slugs:
         try:
-            path, uploaded = publish_report(slug, period, platform=None if platform == "all" else platform)
+            path, uploaded = publish_report(
+                slug, period,
+                platform=None if platform == "all" else platform,
+                reuse_synthesis=reuse_synthesis,
+            )
             log.info(
                 "monthly_reports.client_done",
                 client=slug, pptx=str(path), supabase_url=uploaded.signed_url,
