@@ -271,11 +271,19 @@ def share_folder_anyone(folder_path: str) -> str:
     folder_id = get_or_create_folder(folder_path)
     service = _build_service()
 
-    service.permissions().create(
-        fileId=folder_id,
-        body={"type": "anyone", "role": "reader"},
-        fields="id",
-    ).execute()
+    try:
+        service.permissions().create(
+            fileId=folder_id,
+            body={"type": "anyone", "role": "reader"},
+            fields="id",
+        ).execute()
+    except HttpError as exc:
+        # drive.file scope can't propagate permissions to children created in a
+        # prior session. Folder is already public; safe to ignore.
+        if exc.resp.status == 403 and "appNotAuthorizedToChild" in str(exc):
+            log.debug("drive.folder.share_skipped_already_public", path=folder_path)
+        else:
+            raise
 
     meta = service.files().get(fileId=folder_id, fields="webViewLink").execute()
     link: str = meta.get("webViewLink", "")

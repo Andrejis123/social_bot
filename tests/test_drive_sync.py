@@ -28,14 +28,14 @@ from social_bot.pipeline.sync_drive import (
 def test_drive_folder_for_post_basic():
     path = _drive_folder_for_post(
         "SMM - Live", "ecig-monitoring", "pulzeczech",
-        "2026-06-28T10:00:00+00:00", "12345",
+        "2026-06-28T10:00:00+00:00", "3922100065003843139",
     )
-    assert path == "SMM - Live/ecig-monitoring/@pulzeczech/Posts/2026-06-28_12345"
+    assert path == "SMM - Live/ecig-monitoring/@pulzeczech/Posts/28-06-2026_843139"
 
 
 def test_drive_folder_for_post_date_truncation():
-    path = _drive_folder_for_post("Root", "client", "handle", "2026-01-15", "abc")
-    assert "2026-01-15_abc" in path
+    path = _drive_folder_for_post("Root", "client", "handle", "2026-01-15", "123456789")
+    assert "15-01-2026_456789" in path
 
 
 def test_drive_folder_for_post_empty_posted_at():
@@ -45,7 +45,7 @@ def test_drive_folder_for_post_empty_posted_at():
 
 def test_drive_folder_for_story_basic():
     path = _drive_folder_for_story("SMM - Live", "agape", "agapeslovensko", "2026-06-28T09:00:00")
-    assert path == "SMM - Live/agape/@agapeslovensko/Stories/2026-06-28"
+    assert path == "SMM - Live/agape/@agapeslovensko/Stories/28-06-2026"
 
 
 def test_drive_folder_for_story_empty_date():

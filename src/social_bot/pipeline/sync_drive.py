@@ -38,18 +38,28 @@ def _ext_from_mime(mime: str, media_type: str) -> str:
     }.get(mime, "mp4" if media_type == "video" else "jpg")
 
 
+def _iso_to_eu_date(posted_at: str) -> str:
+    """Convert ISO date prefix (YYYY-MM-DD) to European format (DD-MM-YYYY)."""
+    raw = (posted_at or "")[:10]
+    if len(raw) == 10 and raw[4] == "-":
+        y, m, d = raw.split("-")
+        return f"{d}-{m}-{y}"
+    return raw
+
+
 def _drive_folder_for_post(
     live_root: str, client_slug: str, handle: str,
     posted_at: str, platform_post_id: str,
 ) -> str:
-    date = (posted_at or "")[:10]
-    return f"{live_root}/{client_slug}/@{handle}/Posts/{date}_{platform_post_id}"
+    date = _iso_to_eu_date(posted_at)
+    short_id = (platform_post_id or "")[-6:]
+    return f"{live_root}/{client_slug}/@{handle}/Posts/{date}_{short_id}"
 
 
 def _drive_folder_for_story(
     live_root: str, client_slug: str, handle: str, posted_at: str,
 ) -> str:
-    date = (posted_at or "")[:10]
+    date = _iso_to_eu_date(posted_at)
     return f"{live_root}/{client_slug}/@{handle}/Stories/{date}"
 
 
