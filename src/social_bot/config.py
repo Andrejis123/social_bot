@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     google_oauth_client_secret: str | None = Field(None, alias="GOOGLE_OAUTH_CLIENT_SECRET")
     google_oauth_refresh_token: str | None = Field(None, alias="GOOGLE_OAUTH_REFRESH_TOKEN")
     google_drive_root_folder: str = Field("SMM - Reports", alias="GOOGLE_DRIVE_ROOT_FOLDER")
+    google_drive_live_root_folder: str = Field("SMM - Live", alias="GOOGLE_DRIVE_LIVE_ROOT_FOLDER")
 
     # --- Notifications ---
     telegram_bot_token: str | None = Field(None, alias="TELEGRAM_BOT_TOKEN")

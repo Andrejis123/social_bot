@@ -35,6 +35,8 @@ class RunContext:
     account_handle: str | None = None
     platform: str = "instagram"
 
+    silent: bool = False  # suppress Telegram notifications (run_history still recorded)
+
     run_id: str = ""
     items_total: int = 0
     items_new: int = 0
@@ -62,6 +64,8 @@ class RunContext:
         return self
 
     def _notify_started(self) -> None:
+        if self.silent:
+            return
         try:
             from ..notifications.telegram import notify_run_started
             notify_run_started(
@@ -134,6 +138,8 @@ class RunContext:
         return False  # do not swallow exceptions
 
     def _send_notification(self, status: str) -> None:
+        if self.silent and status == "success":
+            return
         try:
             from ..notifications.telegram import notify_run_completed
             notify_run_completed(

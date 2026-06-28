@@ -20,6 +20,7 @@ path string, never just leaf name) so we don't re-search Drive on every call.
 
 from __future__ import annotations
 
+import io
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -27,7 +28,8 @@ from pathlib import Path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
 
 from .config import REPO_ROOT, get_settings
 from .logging import get_logger
@@ -220,3 +222,75 @@ def upload_bundle(client_slug: str, zip_path: Path) -> dict[str, str]:
         drive_folder_path=client_folder(client_slug, DATA),
         mime_type=ZIP_MIME,
     )
+
+
+def upload_bytes(
+    *,
+    data: bytes,
+    name: str,
+    drive_folder_path: str,
+    mime_type: str,
+    overwrite: bool = False,
+) -> dict[str, str]:
+    """Upload in-memory bytes to Drive. Returns {id, webViewLink}.
+
+    overwrite=False (default) skips the find-existing call; the DB ledger already
+    guards re-sync so we never duplicate.
+    """
+    folder_id = get_or_create_folder(drive_folder_path)
+    service = _build_service()
+
+    media = MediaIoBaseUpload(io.BytesIO(data), mimetype=mime_type, resumable=True)
+
+    existing_id = _find_file_in_folder(service, folder_id, name) if overwrite else None
+    if existing_id:
+        file = service.files().update(
+            fileId=existing_id,
+            media_body=media,
+            fields="id, webViewLink",
+        ).execute()
+        log.info("drive.file.updated", name=name, id=file["id"])
+    else:
+        body = {"name": name, "parents": [folder_id]}
+        file = service.files().create(
+            body=body,
+            media_body=media,
+            fields="id, webViewLink",
+        ).execute()
+        log.info("drive.file.uploaded", name=name, id=file["id"])
+
+    return {"id": file["id"], "webViewLink": file.get("webViewLink", "")}
+
+
+def share_folder_anyone(folder_path: str) -> str:
+    """Ensure the folder at folder_path has an anyone/reader permission.
+
+    Idempotent — if the permission already exists, Drive returns it without
+    error. Returns the folder's webViewLink.
+    """
+    folder_id = get_or_create_folder(folder_path)
+    service = _build_service()
+
+    service.permissions().create(
+        fileId=folder_id,
+        body={"type": "anyone", "role": "reader"},
+        fields="id",
+    ).execute()
+
+    meta = service.files().get(fileId=folder_id, fields="webViewLink").execute()
+    link: str = meta.get("webViewLink", "")
+    log.info("drive.folder.shared", path=folder_path, link=link)
+    return link
+
+
+def delete_file(file_id: str) -> None:
+    """Delete a Drive file by ID. Tolerates 404 (already gone)."""
+    service = _build_service()
+    try:
+        service.files().delete(fileId=file_id).execute()
+        log.info("drive.file.deleted", id=file_id)
+    except HttpError as exc:
+        if exc.resp.status == 404:
+            log.debug("drive.file.delete_404", id=file_id)
+        else:
+            raise

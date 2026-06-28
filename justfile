@@ -75,6 +75,14 @@ cron-stories client handle:
 cron-describe-stories client:
     just describe-stories {{client}}
 
+# Sync Drive Live View for a client (mirror unsynced media, prune >30d). Optional: --window-days
+sync-drive client window="30":
+    uv run python -m scripts.sync_drive --client {{client}} --window-days {{window}}
+
+# Cron target: sync Drive Live View (run after describe jobs complete).
+cron-sync-drive client:
+    just sync-drive {{client}}
+
 # ---------------------------------------------------------------------------
 # Migrations & checks
 # ---------------------------------------------------------------------------
@@ -84,6 +92,8 @@ print-migration:
     @cat migrations/0001_initial_schema.sql
     @cat migrations/0002_add_ai_description.sql
     @cat migrations/0003_add_stories_ai.sql
+    @cat migrations/0004_synthesis_artifacts.sql
+    @cat migrations/0005_drive_sync.sql
 
 # Lint + type check + tests.
 check:

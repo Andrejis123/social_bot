@@ -222,7 +222,42 @@ Real, but mirrored by existing exposure:
 
 ---
 
-## 10. Recommended next steps
+## 10. GDPR deep-dive (via gdpr-dsgvo-expert skill)
+
+### Controller classification
+You are a **data controller** — not a processor and not a neutral middleware. You determine the purposes and means of processing (which endpoints, which fields, what data is returned). HikerAPI is an independent controller for their own processing. Apify is your processor for hosting — you need a **Data Processing Agreement (DPA)** with Apify. Your users are independent controllers for downstream use; your ToS must allocate that responsibility clearly.
+
+### "Public data" is not a GDPR defense
+GDPR applies to any processing of personal data regardless of public visibility (Recital 47; confirmed by EDPB and multiple SAs). The Dutch AP, French CNIL, Italian Garante have all confirmed that scraping publicly visible social media profiles is full-GDPR processing. "Publicly available" is not a lawful basis under Art. 6.
+
+What *does* matter: **business/brand accounts** (lower privacy expectation, legitimate interest more defensible) vs. **personal accounts** (full protections regardless of public visibility).
+
+### Lawful basis
+Only Art. 6(1)(f) legitimate interest is viable — no consent is obtainable, no contractual basis with data subjects exists. Legitimate interest requires a three-part Legitimate Interest Assessment (LIA):
+1. **Purpose test**: Commercial competitive monitoring — recognized interest, passes
+2. **Necessity test**: No less intrusive alternative at scale — largely passes
+3. **Balancing test**: Data subjects' expectations vs. your interest — **weakens significantly** when the actor enables arbitrary third-party users scraping arbitrary personal accounts at arbitrary volume
+
+Conclusion: LIA holds for B2B competitive monitoring of public business accounts. Becomes fragile if personal accounts are in scope.
+
+### Risk vs. existing social-bot
+The material difference is **scale multiplication**: social-bot processes ~7 specific competitor accounts. The actor enables unknown third parties to scrape unknown EU accounts at unknown volume — you become responsible for that scale as the enabling controller.
+
+### Enforcement reality (Slovakia/Czech operator)
+Lead SA is Slovak DPA (ÚOOÚ SR) or Czech DPA — historically lower enforcement intensity than Dutch AP or CNIL. However, EDPB consistency mechanism means any SA can escalate. Clearview-level fines required massive systematic operations targeting biometric/sensitive data. For a narrow B2B tool: **Low-Medium** risk. For personal account scraping at scale: **Medium-High**.
+
+### Mitigations (in priority order)
+1. **Restrict to business/brand accounts only** — highest-impact single mitigation; add account-type ToS prohibition
+2. **DPA with Apify** — verify their processor terms cover your actor
+3. **Actor ToS** — allocate downstream controller responsibility to users; prohibit scraping personal accounts; prohibit storing scraped data beyond transient use
+4. **Records of Processing (Art. 30)** — document processing chain, purposes, data categories, retention
+5. **Legitimate Interest Assessment** — document the three-part test; essential if an SA investigates
+6. **Data minimisation** — don't expose location, tagged users, DMs; only fields needed for typical B2B use
+7. **DPIA** — systematic large-scale social media scraping is on most SAs' indicative DPIA lists (Art. 35); conduct proactively
+
+---
+
+## 11. Recommended next steps
 
 1. **Email HikerAPI**: "Can we wrap your API in a commercial Apify actor where users pay us per result?" — gating question, one message
 2. **Dry-run on Apify**: publish a minimal actor, run 3–10 calls, check the actual compute charge in Apify billing — confirms or corrects the margin model

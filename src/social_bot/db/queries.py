@@ -8,8 +8,8 @@ changes.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, cast
 
 from ..logging import get_logger
 from .client import get_supabase
@@ -577,6 +577,141 @@ def insert_story_media(
             "downloaded_at": datetime.utcnow().isoformat(),
         }
     ).execute()
+
+
+# =========================
+# Drive sync
+# =========================
+
+
+def list_unsynced_post_media(account_ids: list[str], since: datetime) -> list[dict[str, Any]]:
+    """Post media joined to posts: not yet synced to Drive, within the window, no reel covers."""
+    if not account_ids:
+        return []
+    sb = get_supabase()
+    res = (
+        sb.table("media")
+        .select(
+            "id, slide_index, media_type, storage_path, "
+            "posts!inner(id, account_id, platform_post_id, posted_at)"
+        )
+        .in_("posts.account_id", account_ids)
+        .gte("posts.posted_at", since.isoformat())
+        .is_("drive_synced_at", "null")
+        .not_.is_("storage_path", "null")
+        .neq("slide_index", 99)
+        .execute()
+    )
+    rows: list[dict[str, Any]] = []
+    for r in cast(list[dict[str, Any]], res.data or []):
+        post: dict[str, Any] = r.get("posts") or {}
+        rows.append({
+            "media_id": r["id"],
+            "slide_index": r["slide_index"],
+            "media_type": r["media_type"],
+            "storage_path": r["storage_path"],
+            "post_id": post.get("id"),
+            "platform_post_id": post.get("platform_post_id"),
+            "posted_at": post.get("posted_at"),
+            "account_id": post.get("account_id"),
+        })
+    return rows
+
+
+def list_unsynced_story_media(account_ids: list[str], since: datetime) -> list[dict[str, Any]]:
+    """Story media joined to stories: not yet synced to Drive, within the window."""
+    if not account_ids:
+        return []
+    sb = get_supabase()
+    res = (
+        sb.table("story_media")
+        .select(
+            "id, media_type, storage_path, "
+            "stories!inner(id, account_id, platform_story_id, posted_at)"
+        )
+        .in_("stories.account_id", account_ids)
+        .gte("stories.posted_at", since.isoformat())
+        .is_("drive_synced_at", "null")
+        .not_.is_("storage_path", "null")
+        .execute()
+    )
+    rows: list[dict[str, Any]] = []
+    for r in cast(list[dict[str, Any]], res.data or []):
+        story: dict[str, Any] = r.get("stories") or {}
+        rows.append({
+            "story_media_id": r["id"],
+            "media_type": r["media_type"],
+            "storage_path": r["storage_path"],
+            "story_id": story.get("id"),
+            "platform_story_id": story.get("platform_story_id"),
+            "posted_at": story.get("posted_at"),
+            "account_id": story.get("account_id"),
+        })
+    return rows
+
+
+def mark_media_synced(media_id: str, drive_file_id: str) -> None:
+    sb = get_supabase()
+    sb.table("media").update({
+        "drive_file_id": drive_file_id,
+        "drive_synced_at": datetime.now(UTC).isoformat(),
+    }).eq("id", media_id).execute()
+
+
+def mark_story_media_synced(story_media_id: str, drive_file_id: str) -> None:
+    sb = get_supabase()
+    sb.table("story_media").update({
+        "drive_file_id": drive_file_id,
+        "drive_synced_at": datetime.now(UTC).isoformat(),
+    }).eq("id", story_media_id).execute()
+
+
+def list_expired_drive_media(cutoff: datetime) -> list[dict[str, Any]]:
+    """Post media with Drive files whose post is older than cutoff (for retention prune)."""
+    sb = get_supabase()
+    res = (
+        sb.table("media")
+        .select("id, drive_file_id, posts!inner(posted_at)")
+        .not_.is_("drive_synced_at", "null")
+        .lt("posts.posted_at", cutoff.isoformat())
+        .execute()
+    )
+    return [
+        {"media_id": r["id"], "drive_file_id": r["drive_file_id"]}
+        for r in cast(list[dict[str, Any]], res.data or [])
+    ]
+
+
+def list_expired_drive_story_media(cutoff: datetime) -> list[dict[str, Any]]:
+    """Story media with Drive files older than cutoff (for retention prune)."""
+    sb = get_supabase()
+    res = (
+        sb.table("story_media")
+        .select("id, drive_file_id, stories!inner(posted_at)")
+        .not_.is_("drive_synced_at", "null")
+        .lt("stories.posted_at", cutoff.isoformat())
+        .execute()
+    )
+    return [
+        {"story_media_id": r["id"], "drive_file_id": r["drive_file_id"]}
+        for r in cast(list[dict[str, Any]], res.data or [])
+    ]
+
+
+def clear_media_drive(media_id: str) -> None:
+    sb = get_supabase()
+    sb.table("media").update({
+        "drive_file_id": None,
+        "drive_synced_at": None,
+    }).eq("id", media_id).execute()
+
+
+def clear_story_media_drive(story_media_id: str) -> None:
+    sb = get_supabase()
+    sb.table("story_media").update({
+        "drive_file_id": None,
+        "drive_synced_at": None,
+    }).eq("id", story_media_id).execute()
 
 
 # =========================
