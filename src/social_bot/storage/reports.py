@@ -97,7 +97,7 @@ def upload_report(client_slug: str, pptx_path: Path) -> UploadedReport:
         path=storage_path, expires_in=_SIGNED_URL_TTL_SECONDS,
     )
     # supabase-py shape: {"signedURL": "..."} on success
-    signed_url = signed.get("signedURL") or signed.get("signed_url") or ""
+    signed_url = str(signed.get("signedURL") or signed.get("signed_url") or "")
     if not signed_url:
         raise RuntimeError(
             f"Supabase returned no signed URL for {storage_path}: {signed!r}"

@@ -14,16 +14,21 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PIL import Image
-from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
-from pptx.util import Emu, Inches, Pt
+from pptx.util import Emu, Inches, Length, Pt
 
 from . import theme
 from .brand import Brand
+
+if TYPE_CHECKING:
+    # `pptx.Presentation` is a factory function, not a type. The real class
+    # (used only in annotations here) lives in pptx.presentation.
+    from pptx.presentation import Presentation
 
 # ────────────────────────────────────────────────────────────────────────
 # Data structures consumed by the renderer
@@ -78,7 +83,7 @@ def _compress_image(im: Image.Image, target_w_emu: int, target_h_emu: int) -> io
     max_w = max(1, int(target_w_emu * _DPI_TARGET / _EMU_PER_INCH))
     max_h = max(1, int(target_h_emu * _DPI_TARGET / _EMU_PER_INCH))
     if im.width > max_w or im.height > max_h:
-        im.thumbnail((max_w, max_h), Image.LANCZOS)
+        im.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
     if im.mode != "RGB":
         if im.mode in ("P", "LA"):
             im = im.convert("RGBA")
@@ -233,6 +238,8 @@ def _draw_rainbow_stripe(slide, brand: Brand) -> None:
     footer accent). Light themes: stripe sits under the title to break up the
     top white-space and match the Summary / AdditionalData chrome.
     """
+    # rainbow_top is Cm on the light theme, Inches on the dark; both are Length.
+    cfg_top: Length
     if brand.is_light:
         cfg_top = theme.LightTitle.rainbow_top
         seg_w = theme.LightTitle.rainbow_seg_w

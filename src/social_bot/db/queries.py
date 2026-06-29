@@ -9,10 +9,10 @@ changes.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 from ..logging import get_logger
-from .client import get_supabase
+from .client import get_supabase, rows, single
 
 log = get_logger(__name__)
 
@@ -27,9 +27,9 @@ def upsert_client(slug: str, name: str) -> str:
     sb = get_supabase()
     existing = sb.table("clients").select("id").eq("slug", slug).limit(1).execute()
     if existing.data:
-        return existing.data[0]["id"]
+        return rows(existing)[0]["id"]
     inserted = sb.table("clients").insert({"slug": slug, "name": name}).execute()
-    return inserted.data[0]["id"]
+    return rows(inserted)[0]["id"]
 
 
 def upsert_account(
@@ -54,7 +54,7 @@ def upsert_account(
         .execute()
     )
     if existing.data:
-        return existing.data[0]
+        return rows(existing)[0]
     inserted = (
         sb.table("accounts")
         .insert(
@@ -67,7 +67,7 @@ def upsert_account(
         )
         .execute()
     )
-    return {"id": inserted.data[0]["id"], "platform_account_id": None}
+    return {"id": rows(inserted)[0]["id"], "platform_account_id": None}
 
 
 def set_account_platform_id(account_id: str, platform_account_id: str) -> None:
@@ -93,7 +93,8 @@ def find_post(platform: str, platform_post_id: str) -> dict[str, Any] | None:
         .limit(1)
         .execute()
     )
-    return res.data[0] if res.data else None
+    matches = rows(res)
+    return matches[0] if matches else None
 
 
 def insert_post(
@@ -124,7 +125,7 @@ def insert_post(
         )
         .execute()
     )
-    return res.data[0]["id"]
+    return rows(res)[0]["id"]
 
 
 def get_account_with_client(account_id: str) -> dict[str, Any] | None:
@@ -137,9 +138,9 @@ def get_account_with_client(account_id: str) -> dict[str, Any] | None:
         .single()
         .execute()
     )
-    if not res.data:
+    row = single(res)
+    if row is None:
         return None
-    row = res.data
     row["client_slug"] = (row.get("clients") or {}).get("slug")
     return row
 
@@ -152,13 +153,13 @@ def find_posts_needing_description(
     client_row = sb.table("clients").select("id").eq("slug", client_slug).limit(1).execute()
     if not client_row.data:
         return []
-    client_id = client_row.data[0]["id"]
+    client_id = rows(client_row)[0]["id"]
 
     q = sb.table("accounts").select("id").eq("client_id", client_id)
     if account_handle:
         q = q.eq("handle", account_handle)
     account_rows = q.execute()
-    account_ids = [a["id"] for a in (account_rows.data or [])]
+    account_ids = [a["id"] for a in rows(account_rows)]
     if not account_ids:
         return []
 
@@ -173,7 +174,7 @@ def find_posts_needing_description(
         .limit(100)
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def update_post_description(
@@ -195,7 +196,7 @@ def update_post_description(
 def increment_post_description_attempts(post_id: str, *, error: str) -> None:
     sb = get_supabase()
     current = sb.table("posts").select("ai_description_attempts").eq("id", post_id).single().execute()
-    attempts = (current.data or {}).get("ai_description_attempts", 0) + 1
+    attempts = (single(current) or {}).get("ai_description_attempts", 0) + 1
     sb.table("posts").update(
         {
             "ai_description_attempts": attempts,
@@ -216,14 +217,14 @@ def find_posts_needing_ai(max_attempts: int = 3) -> list[dict[str, Any]]:
         .limit(100)
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def increment_post_ai_attempts(post_id: str, *, error: str) -> int:
     """Increment ai_attempts counter and store last error. Returns new attempt count."""
     sb = get_supabase()
     current = sb.table("posts").select("ai_attempts").eq("id", post_id).single().execute()
-    attempts = (current.data or {}).get("ai_attempts", 0) + 1
+    attempts = (single(current) or {}).get("ai_attempts", 0) + 1
     sb.table("posts").update({
         "ai_attempts": attempts,
         "ai_last_error": error[:2000],
@@ -318,13 +319,14 @@ def insert_media(
         )
         .execute()
     )
-    return res.data[0]["id"]
+    return rows(res)[0]["id"]
 
 
 def get_client_id_by_slug(slug: str) -> str | None:
     sb = get_supabase()
     res = sb.table("clients").select("id").eq("slug", slug).limit(1).execute()
-    return res.data[0]["id"] if res.data else None
+    matches = rows(res)
+    return matches[0]["id"] if matches else None
 
 
 def list_accounts_for_client(client_id: str) -> list[dict[str, Any]]:
@@ -335,7 +337,7 @@ def list_accounts_for_client(client_id: str) -> list[dict[str, Any]]:
         .eq("client_id", client_id)
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def list_posts_in_period(
@@ -350,7 +352,7 @@ def list_posts_in_period(
         .lte("posted_at", end.isoformat())
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def list_media_for_posts(post_ids: list[str]) -> list[dict[str, Any]]:
@@ -364,7 +366,7 @@ def list_media_for_posts(post_ids: list[str]) -> list[dict[str, Any]]:
         .not_.is_("storage_path", "null")
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def list_stories_in_period(
@@ -379,7 +381,7 @@ def list_stories_in_period(
         .lte("posted_at", end.isoformat())
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def list_story_media_for_stories(story_ids: list[str]) -> list[dict[str, Any]]:
@@ -393,7 +395,7 @@ def list_story_media_for_stories(story_ids: list[str]) -> list[dict[str, Any]]:
         .not_.is_("storage_path", "null")
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def list_media_for_post(post_id: str) -> list[dict[str, Any]]:
@@ -405,7 +407,7 @@ def list_media_for_post(post_id: str) -> list[dict[str, Any]]:
         .order("slide_index")
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 # =========================
@@ -423,7 +425,8 @@ def find_story(platform: str, platform_story_id: str) -> dict[str, Any] | None:
         .limit(1)
         .execute()
     )
-    return res.data[0] if res.data else None
+    matches = rows(res)
+    return matches[0] if matches else None
 
 
 def insert_story(
@@ -452,7 +455,7 @@ def insert_story(
         )
         .execute()
     )
-    return res.data[0]["id"]
+    return rows(res)[0]["id"]
 
 
 def list_media_for_story(story_id: str) -> list[dict[str, Any]]:
@@ -463,7 +466,7 @@ def list_media_for_story(story_id: str) -> list[dict[str, Any]]:
         .eq("story_id", story_id)
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def update_story_ai(
@@ -491,7 +494,7 @@ def update_story_ai(
 def increment_story_ai_attempts(story_id: str, *, error: str) -> int:
     sb = get_supabase()
     current = sb.table("stories").select("ai_attempts").eq("id", story_id).single().execute()
-    attempts = (current.data or {}).get("ai_attempts", 0) + 1
+    attempts = (single(current) or {}).get("ai_attempts", 0) + 1
     sb.table("stories").update({
         "ai_attempts": attempts,
         "ai_last_error": error[:2000],
@@ -506,13 +509,13 @@ def find_stories_needing_description(
     client_row = sb.table("clients").select("id").eq("slug", client_slug).limit(1).execute()
     if not client_row.data:
         return []
-    client_id = client_row.data[0]["id"]
+    client_id = rows(client_row)[0]["id"]
 
     q = sb.table("accounts").select("id").eq("client_id", client_id)
     if account_handle:
         q = q.eq("handle", account_handle)
     account_rows = q.execute()
-    account_ids = [a["id"] for a in (account_rows.data or [])]
+    account_ids = [a["id"] for a in rows(account_rows)]
     if not account_ids:
         return []
 
@@ -527,7 +530,7 @@ def find_stories_needing_description(
         .limit(200)
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def update_story_description(
@@ -549,7 +552,7 @@ def update_story_description(
 def increment_story_description_attempts(story_id: str, *, error: str) -> None:
     sb = get_supabase()
     current = sb.table("stories").select("ai_description_attempts").eq("id", story_id).single().execute()
-    attempts = (current.data or {}).get("ai_description_attempts", 0) + 1
+    attempts = (single(current) or {}).get("ai_description_attempts", 0) + 1
     sb.table("stories").update(
         {
             "ai_description_attempts": attempts,
@@ -602,10 +605,10 @@ def list_unsynced_post_media(account_ids: list[str], since: datetime) -> list[di
         .neq("slide_index", 99)
         .execute()
     )
-    rows: list[dict[str, Any]] = []
-    for r in cast(list[dict[str, Any]], res.data or []):
+    out: list[dict[str, Any]] = []
+    for r in rows(res):
         post: dict[str, Any] = r.get("posts") or {}
-        rows.append({
+        out.append({
             "media_id": r["id"],
             "slide_index": r["slide_index"],
             "media_type": r["media_type"],
@@ -615,7 +618,7 @@ def list_unsynced_post_media(account_ids: list[str], since: datetime) -> list[di
             "posted_at": post.get("posted_at"),
             "account_id": post.get("account_id"),
         })
-    return rows
+    return out
 
 
 def list_unsynced_story_media(account_ids: list[str], since: datetime) -> list[dict[str, Any]]:
@@ -635,10 +638,10 @@ def list_unsynced_story_media(account_ids: list[str], since: datetime) -> list[d
         .not_.is_("storage_path", "null")
         .execute()
     )
-    rows: list[dict[str, Any]] = []
-    for r in cast(list[dict[str, Any]], res.data or []):
+    out: list[dict[str, Any]] = []
+    for r in rows(res):
         story: dict[str, Any] = r.get("stories") or {}
-        rows.append({
+        out.append({
             "story_media_id": r["id"],
             "media_type": r["media_type"],
             "storage_path": r["storage_path"],
@@ -647,7 +650,7 @@ def list_unsynced_story_media(account_ids: list[str], since: datetime) -> list[d
             "posted_at": story.get("posted_at"),
             "account_id": story.get("account_id"),
         })
-    return rows
+    return out
 
 
 def mark_media_synced(media_id: str, drive_file_id: str) -> None:
@@ -678,7 +681,7 @@ def list_expired_drive_media(cutoff: datetime) -> list[dict[str, Any]]:
     )
     return [
         {"media_id": r["id"], "drive_file_id": r["drive_file_id"]}
-        for r in cast(list[dict[str, Any]], res.data or [])
+        for r in rows(res)
     ]
 
 
@@ -694,7 +697,7 @@ def list_expired_drive_story_media(cutoff: datetime) -> list[dict[str, Any]]:
     )
     return [
         {"story_media_id": r["id"], "drive_file_id": r["drive_file_id"]}
-        for r in cast(list[dict[str, Any]], res.data or [])
+        for r in rows(res)
     ]
 
 
@@ -738,7 +741,7 @@ def start_run(
         )
         .execute()
     )
-    return res.data[0]["id"]
+    return rows(res)[0]["id"]
 
 
 def finish_run(
@@ -785,9 +788,9 @@ def list_all_tracked_drive_ids() -> set[str]:
                 .range(offset, offset + page - 1)
                 .execute()
             )
-            rows = cast(list[dict[str, Any]], res.data or [])
-            ids.update(r["drive_file_id"] for r in rows)
-            if len(rows) < page:
+            page_rows = rows(res)
+            ids.update(r["drive_file_id"] for r in page_rows)
+            if len(page_rows) < page:
                 break
             offset += page
     return ids

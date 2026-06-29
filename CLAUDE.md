@@ -47,8 +47,9 @@ VPS host + path live in the `deploy` recipe (justfile) and in memory
 ## Running tooling
 
 - Run Python via `uv run ...` or the project venv `.venv/bin/python` — the
-  package isn't on system Python. (`uv run` may warn about a stale
-  `Claude_Social/.venv` VIRTUAL_ENV; it still works.)
+  package isn't on system Python. (`VIRTUAL_ENV` is pinned to the project
+  `.venv` in `.claude/settings.json`, so the stale-`Claude_Social/.venv`
+  warning is gone from new sessions.)
 - `just check` = ruff + mypy + pytest. Lint is green — keep it green.
 - Pre-commit hook runs `/security-review` + `/simplify` automatically. Never
   skip with `--no-verify`; fix the underlying issue instead.

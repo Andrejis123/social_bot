@@ -6,11 +6,11 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from supabase import Client
 
-from .db.client import get_supabase
+from .db.client import get_supabase, rows
 from .logging import get_logger
 
 log = get_logger(__name__)
@@ -64,14 +64,13 @@ def _fetch_content(
         .lte("first_seen_at", end.isoformat())
         .execute()
     )
-    return cast(list[dict[str, Any]], result.data or [])
+    return rows(result)
 
 
 def _run_counts(
     sb: Client, job_name: str, handle: str, start: datetime, end: datetime
 ) -> tuple[int, int]:
-    rows = cast(
-        list[dict[str, Any]],
+    counts = rows(
         sb.table("run_history")
         .select("items_new")
         .eq("job_name", job_name)
@@ -80,18 +79,16 @@ def _run_counts(
         .gte("started_at", start.isoformat())
         .lte("started_at", end.isoformat())
         .execute()
-        .data or [],
     )
-    return len(rows), sum(1 for r in rows if r["items_new"] == 0)
+    return len(counts), sum(1 for r in counts if r["items_new"] == 0)
 
 
 def compute_health(interval: str) -> tuple[list[AccountHealth], datetime, datetime]:
     start, end = parse_interval(interval)
     sb = get_supabase()
 
-    accounts = cast(
-        list[dict[str, Any]],
-        sb.table("accounts").select("id, handle, platform").eq("is_active", True).execute().data or [],
+    accounts = rows(
+        sb.table("accounts").select("id, handle, platform").eq("is_active", True).execute()
     )
 
     results: list[AccountHealth] = []

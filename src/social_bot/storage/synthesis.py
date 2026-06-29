@@ -5,9 +5,7 @@ kept (history). --reuse-synthesis fetches the most recent row.
 """
 from __future__ import annotations
 
-from typing import cast
-
-from ..db.client import get_supabase
+from ..db.client import get_supabase, rows
 from ..logging import get_logger
 
 log = get_logger(__name__)
@@ -55,10 +53,11 @@ def load_latest_synthesis_artifact(
         .limit(1)
         .execute()
     )
-    if result.data:
+    artifacts = rows(result)
+    if artifacts:
         log.info(
             "synthesis_artifact.loaded",
             client=client_slug, period=period_label, platform=platform,
         )
-        return cast(dict, result.data[0]["artifact"])  # type: ignore[index,call-overload]
+        return artifacts[0]["artifact"]
     return None

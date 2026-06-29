@@ -64,7 +64,7 @@ def classify_with_openai(
         },
     }
 
-    resp = client.chat.completions.create(
+    resp = client.chat.completions.create(  # type: ignore[call-overload]  # SDK overload stub; valid at runtime
         model=settings.openai_model,
         messages=[{"role": "user", "content": content}],
         response_format={"type": "json_schema", "json_schema": schema},
@@ -116,7 +116,7 @@ def describe_with_openai(
         },
     }
 
-    resp = client.chat.completions.create(
+    resp = client.chat.completions.create(  # type: ignore[call-overload]  # SDK overload stub; valid at runtime
         model=settings.openai_model,
         messages=[{"role": "user", "content": content}],
         response_format={"type": "json_schema", "json_schema": schema},

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 from pptx import Presentation
 
@@ -70,6 +71,11 @@ from .synthesis import (
     synthesize_category,
     synthesize_page_narrative,
 )
+
+if TYPE_CHECKING:
+    # `pptx.Presentation` (imported above) is the factory function used at
+    # runtime; the actual class for annotations lives in pptx.presentation.
+    from pptx.presentation import Presentation as PresentationDoc
 
 log = get_logger(__name__)
 
@@ -213,7 +219,7 @@ def _build_report(
     )
     platform_tag = f"{platform}_" if platform else ""
     out_path = out_dir / f"{client_slug}_{platform_tag}{safe_period}.pptx"
-    prs.save(out_path)
+    prs.save(str(out_path))
     slide_count = len(prs.slides)
     log.info(
         "report.saved", client=client_slug, period=period.label,
@@ -290,7 +296,7 @@ def publish_report(
 # ─────────────────────────────────────────────────────────────────────
 
 def _render_account(
-    prs: Presentation, brand: Brand,
+    prs: PresentationDoc, brand: Brand,
     account: AccountData, report: ReportData, period: Period,
     *,
     precomputed: dict[str, CategorySynthesis] | None = None,
@@ -453,7 +459,8 @@ def _build_intro_previews(
                 continue
             base.append(CategoryPreview(
                 name=post.ai_category or "",
-                image_path=post.hero_image_path,
+                # filler_pool only holds posts with a non-None hero image.
+                image_path=cast(Path, post.hero_image_path),
             ))
             used_paths.add(path_str)
 
@@ -466,7 +473,7 @@ def _build_intro_previews(
                     break
                 base.append(CategoryPreview(
                     name=post.ai_category or "",
-                    image_path=post.hero_image_path,
+                    image_path=cast(Path, post.hero_image_path),
                 ))
 
     return base[: theme.Intro.col_count]

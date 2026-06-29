@@ -86,7 +86,7 @@ def classify_with_gemini(
         try:
             response = client.models.generate_content(
                 model=settings.gemini_model,
-                contents=parts,
+                contents=parts,  # type: ignore[arg-type]  # SDK stub rejects list[Part]; valid at runtime
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=schema,
@@ -150,7 +150,7 @@ def describe_with_gemini(
         try:
             response = client.models.generate_content(
                 model=settings.gemini_model,
-                contents=parts,
+                contents=parts,  # type: ignore[arg-type]  # SDK stub rejects list[Part]; valid at runtime
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=schema,

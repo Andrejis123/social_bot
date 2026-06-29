@@ -20,7 +20,7 @@ from __future__ import annotations
 import traceback
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Self
+from typing import Literal, Self
 
 from ..db import queries
 from ..logging import bind_run_context, clear_run_context, get_logger
@@ -101,9 +101,9 @@ class RunContext:
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
-    ) -> bool:
+    ) -> Literal[False]:
         if exc_val is not None:
-            self._fatal_summary = f"{exc_type.__name__}: {exc_val}\n{''.join(traceback.format_tb(exc_tb))}"
+            self._fatal_summary = f"{exc_val.__class__.__name__}: {exc_val}\n{''.join(traceback.format_tb(exc_tb))}"
             status = "failed"
         elif self.items_failed == 0:
             status = "success"

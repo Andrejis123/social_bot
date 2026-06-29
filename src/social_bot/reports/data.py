@@ -24,7 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..clients import load_client
-from ..db.client import get_supabase
+from ..db.client import get_supabase, rows
 from ..db.queries import insert_media
 from ..logging import get_logger
 from ..scrapers.base import REEL_COVER_SLIDE_INDEX
@@ -189,7 +189,7 @@ def _fetch_client(slug: str) -> dict:
     res = sb.table("clients").select("id, name, slug").eq("slug", slug).limit(1).execute()
     if not res.data:
         raise ValueError(f"Client not found: {slug}")
-    return res.data[0]
+    return rows(res)[0]
 
 
 def _fetch_accounts(client_id: str) -> list[dict]:
@@ -206,7 +206,7 @@ def _fetch_accounts(client_id: str) -> list[dict]:
         .eq("client_id", client_id)
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def _build_account_data(
@@ -289,7 +289,7 @@ def _fetch_posts(account_id: str, period: Period) -> list[dict]:
         .order("posted_at")
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def _fetch_stories(account_id: str, period: Period) -> list[dict]:
@@ -303,7 +303,7 @@ def _fetch_stories(account_id: str, period: Period) -> list[dict]:
         .order("posted_at")
         .execute()
     )
-    return res.data or []
+    return rows(res)
 
 
 def _fetch_latest_metrics(post_ids: list[str]) -> dict[str, dict]:
@@ -325,7 +325,7 @@ def _fetch_latest_metrics(post_ids: list[str]) -> dict[str, dict]:
             .order("scraped_at", desc=True)
             .execute()
         )
-        for row in (res.data or []):
+        for row in rows(res):
             pid = row["post_id"]
             if pid not in out:
                 out[pid] = {
@@ -347,7 +347,7 @@ def _fetch_post_media(post_ids: list[str]) -> dict[str, list[dict]]:
             .in_("post_id", chunk)
             .execute()
         )
-        for row in (res.data or []):
+        for row in rows(res):
             out.setdefault(row["post_id"], []).append(row)
     return out
 
@@ -364,7 +364,7 @@ def _fetch_story_media(story_ids: list[str]) -> dict[str, list[dict]]:
             .in_("story_id", chunk)
             .execute()
         )
-        for row in (res.data or []):
+        for row in rows(res):
             out.setdefault(row["story_id"], []).append(row)
     return out
 

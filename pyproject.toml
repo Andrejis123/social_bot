@@ -60,6 +60,15 @@ extend-immutable-calls = ["typer.Argument", "typer.Option"]
 # Hiker* exception names are intentionally short (no Error suffix).
 "src/social_bot/scrapers/_hiker_client.py" = ["N818"]
 
+[tool.mypy]
+python_version = "3.12"
+
+[[tool.mypy.overrides]]
+# googleapiclient ships no type stubs / py.typed marker. Scoped per-module so
+# our own code stays fully type-checked.
+module = ["googleapiclient.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
