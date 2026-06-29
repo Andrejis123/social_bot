@@ -11,6 +11,18 @@ Layout under SMM - Live/<client>/:
 
 Only media within the rolling window_days are synced; items older than the
 window are pruned from Drive and the ledger columns are cleared.
+
+Known limitation - video playback:
+  Drive's preview player transcodes videos server-side, asynchronously, and the
+  queue is slow/flaky for freshly uploaded files ("It's taking longer than
+  expected to process this video file for playback. Please try again later").
+  This is NOT fixable in our encode: a clip that fails to preview was verified
+  byte-for-byte identical in codec/profile/level/pix_fmt/faststart to one that
+  plays, so the variable is Drive's processing state, not the file. Our output
+  is already a standard web-playable MP4 (H.264 yuv420p + AAC + faststart).
+  Genuine videos play once Drive finishes processing (minutes to hours). Static
+  photo-stories, which previously looked "frozen", are now served as JPEG stills
+  via is_static_video (see media_optimize), removing the most common complaint.
 """
 
 from __future__ import annotations
@@ -21,11 +33,30 @@ from ..config import get_settings
 from ..db import queries
 from ..drive import _build_service, delete_file, share_folder_anyone, upload_bytes
 from ..logging import get_logger
-from ..media_optimize import compress_image, transcode_video
+from ..media_optimize import (
+    compress_image,
+    extract_poster_frame,
+    is_static_video,
+    transcode_video,
+)
 from ..storage.media import download_from_storage
 from .run_context import RunContext
 
 log = get_logger(__name__)
+
+
+def _optimize(data: bytes, media_type: str) -> tuple[bytes, str]:
+    """Optimize media for the live view. Returns (bytes, mime).
+
+    Videos are transcoded to ~480p mp4, except static photo-stories (a single
+    still frame plus an audio track) which Drive renders as a frozen image with
+    sound; those are served as a JPEG poster instead.
+    """
+    if media_type == "video":
+        if is_static_video(data):
+            return extract_poster_frame(data), "image/jpeg"
+        return transcode_video(data), "video/mp4"
+    return compress_image(data), "image/jpeg"
 
 
 def _ext_from_mime(mime: str, media_type: str) -> str:
@@ -133,12 +164,7 @@ def sync_client_to_drive(client_slug: str, window_days: int = 30) -> str:
                 continue
 
             try:
-                if media_type == "video":
-                    data = transcode_video(data)
-                    mime = "video/mp4"
-                else:
-                    data = compress_image(data)
-                    mime = "image/jpeg"
+                data, mime = _optimize(data, media_type)
             except Exception as exc:
                 log.warning("sync_drive.optimize_failed", path=storage_path, error=str(exc))
                 run.record_item_error(row["media_id"], stage="optimize", message=str(exc))
@@ -152,7 +178,10 @@ def sync_client_to_drive(client_slug: str, window_days: int = 30) -> str:
             file_name = f"{row['slide_index']}.{ext}"
 
             try:
-                result = upload_bytes(data=data, name=file_name, drive_folder_path=folder_path, mime_type=mime)
+                result = upload_bytes(
+                    data=data, name=file_name, drive_folder_path=folder_path,
+                    mime_type=mime, overwrite=True,
+                )
                 queries.mark_media_synced(row["media_id"], result["id"])
                 run.items_new += 1
             except Exception as exc:
@@ -179,12 +208,7 @@ def sync_client_to_drive(client_slug: str, window_days: int = 30) -> str:
                 continue
 
             try:
-                if media_type == "video":
-                    data = transcode_video(data)
-                    mime = "video/mp4"
-                else:
-                    data = compress_image(data)
-                    mime = "image/jpeg"
+                data, mime = _optimize(data, media_type)
             except Exception as exc:
                 log.warning("sync_drive.optimize_failed", path=storage_path, error=str(exc))
                 run.record_item_error(row["story_media_id"], stage="optimize", message=str(exc))
@@ -197,7 +221,10 @@ def sync_client_to_drive(client_slug: str, window_days: int = 30) -> str:
             file_name = f"{row['platform_story_id']}.{ext}"
 
             try:
-                result = upload_bytes(data=data, name=file_name, drive_folder_path=folder_path, mime_type=mime)
+                result = upload_bytes(
+                    data=data, name=file_name, drive_folder_path=folder_path,
+                    mime_type=mime, overwrite=True,
+                )
                 queries.mark_story_media_synced(row["story_media_id"], result["id"])
                 run.items_new += 1
             except Exception as exc:

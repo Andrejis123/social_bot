@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import io
+import shutil
 import subprocess
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -501,3 +504,220 @@ def test_prune_continues_on_delete_failure() -> None:
     # clear_media_drive is never called when delete_file raises.
     m_clear.assert_not_called()
     assert run.items_updated == 0
+
+
+# ===========================================================================
+# BUG A — orphan duplicate uploads
+#
+# Root cause: drive.upload_bytes defaults overwrite=False, so it always calls
+# service.files().create() and never replaces a same-named file. The sync path
+# (sync_client_to_drive) calls upload_bytes WITHOUT overwrite, so a re-sync of
+# an item whose same-named Drive file already exists creates a DUPLICATE and
+# orphans the old copy (e.g. when the DB ledger drive_synced_at is reset but the
+# physical Drive files survive).
+#
+# Intended (to be implemented by the human):
+#   - upload_bytes(overwrite=True) replaces the existing same-named file via
+#     service.files().update() instead of .create().  [A1 — already honored by
+#     drive.py today, kept as a contract/guard test; should PASS.]
+#   - sync_client_to_drive must call upload_bytes(..., overwrite=True) so a
+#     re-sync REPLACES rather than duplicates.  [A2 — FAILS today: the call site
+#     omits overwrite and inherits the False default.]
+# ===========================================================================
+
+
+def test_upload_bytes_overwrite_true_updates_existing() -> None:
+    """upload_bytes(overwrite=True) replaces a same-named file via files().update().
+
+    Contract/guard test for the idempotent path. drive.upload_bytes already
+    implements this branch, so this PASSES today; the bug A regression is
+    captured by the sync-call-site test below.
+    """
+    service = MagicMock()
+    service.files.return_value.update.return_value.execute.return_value = {
+        "id": "existing-123",
+        "webViewLink": "https://drive.link/existing",
+    }
+
+    with (
+        patch("social_bot.drive.get_or_create_folder", return_value="folder-1"),
+        patch("social_bot.drive._build_service", return_value=service),
+        patch("social_bot.drive._find_file_in_folder", return_value="existing-123"),
+    ):
+        from social_bot.drive import upload_bytes
+
+        result = upload_bytes(
+            data=b"new_bytes",
+            name="0.jpg",
+            drive_folder_path="SMM - Live/c/@h/Posts/01-06-2026_post123",
+            mime_type="image/jpeg",
+            overwrite=True,
+        )
+
+    service.files.return_value.update.assert_called_once()
+    service.files.return_value.create.assert_not_called()
+    assert result["id"] == "existing-123"
+
+
+def test_sync_post_media_upload_is_idempotent_overwrite(
+    sync_env: dict[str, MagicMock],
+) -> None:
+    """sync_client_to_drive must call upload_bytes with overwrite=True.
+
+    FAILS today: the call site in sync_drive omits overwrite, so the False
+    default is inherited and a re-sync creates a duplicate Drive file instead
+    of replacing the existing same-named one.
+    """
+    sync_env["list_post_media"].return_value = [_post_media_row()]
+
+    sync_client_to_drive("test-client")
+
+    sync_env["upload_bytes"].assert_called_once()
+    assert sync_env["upload_bytes"].call_args.kwargs.get("overwrite") is True
+
+
+def test_sync_story_media_upload_is_idempotent_overwrite(
+    sync_env: dict[str, MagicMock],
+) -> None:
+    """Story sync path must also call upload_bytes with overwrite=True.
+
+    FAILS today for the same reason as the post path.
+    """
+    sync_env["list_story_media"].return_value = [_story_media_row()]
+
+    sync_client_to_drive("test-client")
+
+    sync_env["upload_bytes"].assert_called_once()
+    assert sync_env["upload_bytes"].call_args.kwargs.get("overwrite") is True
+
+
+# ===========================================================================
+# BUG B — static photo+audio stories render as frozen video
+#
+# Root cause: Instagram ships a photo-story that has background audio as a 1fps
+# single-frame mp4 (all frames identical, 0 scene changes). media_optimize.
+# transcode_video preserves it as video, so Drive shows a static image with
+# audio that looks frozen.
+#
+# Proposed (not-yet-implemented) interface the human should build to satisfy
+# these tests:
+#
+#   media_optimize.is_static_video(data: bytes) -> bool
+#       Returns True when the clip has a single distinct frame / no scene change
+#       (a static image with an audio track), False for a clip with real motion.
+#
+#   sync_client_to_drive: when is_static_video(data) is True for a video item,
+#       render a JPEG still instead of transcoding, and upload it as
+#       "<platform_story_id>.jpg" with mime_type "image/jpeg" (NOT ".mp4" /
+#       "video/mp4").
+# ===========================================================================
+
+
+_FFMPEG = shutil.which("ffmpeg")
+
+
+def _make_static_video_bytes() -> bytes:
+    """A 1fps clip of a single constant frame plus a silent audio track.
+
+    Mimics Instagram's photo-story-with-audio: every video frame is identical
+    (zero scene changes).
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "static.mp4"
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-f", "lavfi", "-i", "color=c=blue:s=160x120:d=3:r=1",
+                "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+                "-shortest",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                str(out),
+            ],
+            capture_output=True,
+            check=True,
+        )
+        return out.read_bytes()
+
+
+def _make_moving_video_bytes() -> bytes:
+    """A clip with genuine motion (animated test pattern)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "moving.mp4"
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-f", "lavfi", "-i", "testsrc=s=160x120:d=2:r=10",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                str(out),
+            ],
+            capture_output=True,
+            check=True,
+        )
+        return out.read_bytes()
+
+
+@pytest.mark.skipif(_FFMPEG is None, reason="ffmpeg not available")
+def test_is_static_video_detects_single_frame_clip() -> None:
+    """is_static_video returns True for a single-distinct-frame clip.
+
+    FAILS today: media_optimize.is_static_video does not exist yet
+    (AttributeError). Import is kept inside the test so module collection is
+    not broken.
+    """
+    from social_bot import media_optimize
+
+    static = _make_static_video_bytes()
+    assert media_optimize.is_static_video(static) is True
+
+
+@pytest.mark.skipif(_FFMPEG is None, reason="ffmpeg not available")
+def test_is_static_video_rejects_moving_clip() -> None:
+    """is_static_video returns False for a clip with real motion.
+
+    Asserted separately from the static case so the function cannot be
+    satisfied by a constant `return True`.
+    """
+    from social_bot import media_optimize
+
+    moving = _make_moving_video_bytes()
+    assert media_optimize.is_static_video(moving) is False
+
+
+def test_sync_static_story_uploads_as_jpeg(sync_env: dict[str, MagicMock]) -> None:
+    """A static (single-frame + audio) video story is uploaded as a JPEG image.
+
+    FAILS today: sync_drive has no is_static_video branch, so a video story is
+    transcoded and uploaded as "<platform_story_id>.mp4" / "video/mp4". The
+    intended behavior uploads "<platform_story_id>.jpg" / "image/jpeg".
+
+    The is_static_video symbol is patched with create=True so the test is
+    forward-compatible once the human wires the import/branch into sync_drive.
+    """
+    sync_env["list_story_media"].return_value = [
+        _story_media_row(
+            media_type="video",
+            storage_path="media/client/story.mp4",
+            platform_story_id="story123",
+        )
+    ]
+    sync_env["download"].return_value = (b"static_video_bytes", "video/mp4")
+
+    with (
+        patch(
+            "social_bot.pipeline.sync_drive.is_static_video",
+            create=True,
+            return_value=True,
+        ),
+        patch(
+            "social_bot.pipeline.sync_drive.extract_poster_frame",
+            create=True,
+            return_value=b"poster_jpeg",
+        ),
+    ):
+        sync_client_to_drive("test-client")
+
+    sync_env["upload_bytes"].assert_called_once()
+    kwargs = sync_env["upload_bytes"].call_args.kwargs
+    assert kwargs["name"] == "story123.jpg"
+    assert kwargs["mime_type"] == "image/jpeg"
