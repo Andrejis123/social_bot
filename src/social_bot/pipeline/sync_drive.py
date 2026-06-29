@@ -28,10 +28,17 @@ Known limitation - video playback:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from ..config import get_settings
 from ..db import queries
-from ..drive import _build_service, delete_file, share_folder_anyone, upload_bytes
+from ..drive import (
+    _build_service,
+    delete_file,
+    list_files_recursive,
+    share_folder_anyone,
+    upload_bytes,
+)
 from ..logging import get_logger
 from ..media_optimize import (
     compress_image,
@@ -234,6 +241,54 @@ def sync_client_to_drive(client_slug: str, window_days: int = 30) -> str:
         _prune(since, run)
 
         return run.run_id
+
+
+def sweep_drive_orphans(*, apply: bool = False) -> dict[str, Any]:
+    """Delete Live-tree Drive files no longer referenced by any ledger row.
+
+    Normal prune only removes files whose ledger row still points at them. When
+    a media/story_media row is deleted outright (e.g. a Supabase data purge),
+    its Drive file becomes an untracked orphan that prune can never reach. This
+    sweep walks the whole Live tree and removes any file whose Drive id is in
+    neither media.drive_file_id nor story_media.drive_file_id.
+
+    Dry-run by default (apply=False): reports what would be deleted. Safety: a
+    --apply run aborts if the tracked-id set is empty, which almost always means
+    the ledger query failed and would otherwise classify the entire tree as
+    orphaned.
+    """
+    settings = get_settings()
+    live_root = settings.google_drive_live_root_folder
+
+    tracked = queries.list_all_tracked_drive_ids()
+    files = list_files_recursive(live_root)
+    orphans = [f for f in files if f["id"] not in tracked]
+
+    log.info(
+        "drive_sweep.scan",
+        total_files=len(files), tracked_ids=len(tracked), orphans=len(orphans), apply=apply,
+    )
+    for f in orphans:
+        log.info("drive_sweep.orphan", path=f["path"], name=f["name"], will_delete=apply)
+
+    deleted = 0
+    if apply:
+        if not tracked:
+            raise RuntimeError(
+                "refusing to delete: tracked drive-id set is empty (likely a query failure)"
+            )
+        for f in orphans:
+            delete_file(f["id"])
+            deleted += 1
+
+    return {
+        "total_files": len(files),
+        "tracked_ids": len(tracked),
+        "orphans": len(orphans),
+        "deleted": deleted,
+        "applied": apply,
+        "orphan_files": orphans,
+    }
 
 
 def _prune(cutoff: datetime, run: RunContext) -> None:

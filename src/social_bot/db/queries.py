@@ -765,6 +765,34 @@ def finish_run(
     ).eq("id", run_id).execute()
 
 
+def list_all_tracked_drive_ids() -> set[str]:
+    """Every drive_file_id currently referenced by media + story_media.
+
+    Used by the orphan sweep to decide which Live-tree Drive files are still
+    tracked. Paginates in full: a truncated result would misclassify tracked
+    files as orphans, so we never rely on the implicit 1000-row cap.
+    """
+    sb = get_supabase()
+    ids: set[str] = set()
+    for table in ("media", "story_media"):
+        offset = 0
+        page = 1000
+        while True:
+            res = (
+                sb.table(table)
+                .select("drive_file_id")
+                .not_.is_("drive_file_id", "null")
+                .range(offset, offset + page - 1)
+                .execute()
+            )
+            rows = cast(list[dict[str, Any]], res.data or [])
+            ids.update(r["drive_file_id"] for r in rows)
+            if len(rows) < page:
+                break
+            offset += page
+    return ids
+
+
 def record_item_error(
     run_id: str,
     *,

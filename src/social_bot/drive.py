@@ -291,6 +291,39 @@ def share_folder_anyone(folder_path: str) -> str:
     return link
 
 
+def list_files_recursive(folder_path: str) -> list[dict[str, str]]:
+    """Walk a Drive folder tree and return every (non-folder) file.
+
+    Each item is {id, name, path} where path is the folder path the file lives
+    in. Used by the orphan sweep to enumerate the Live tree.
+    """
+    service = _build_service()
+    root_id = get_or_create_folder(folder_path)
+    files: list[dict[str, str]] = []
+
+    def _walk(folder_id: str, path: str) -> None:
+        token = None
+        while True:
+            resp = service.files().list(
+                q=f"'{folder_id}' in parents and trashed = false",
+                spaces="drive",
+                fields="nextPageToken, files(id, name, mimeType)",
+                pageSize=1000,
+                pageToken=token,
+            ).execute()
+            for f in resp.get("files", []):
+                if f["mimeType"] == "application/vnd.google-apps.folder":
+                    _walk(f["id"], f"{path}/{f['name']}")
+                else:
+                    files.append({"id": f["id"], "name": f["name"], "path": path})
+            token = resp.get("nextPageToken")
+            if not token:
+                break
+
+    _walk(root_id, folder_path)
+    return files
+
+
 def delete_file(file_id: str) -> None:
     """Delete a Drive file by ID. Tolerates 404 (already gone)."""
     service = _build_service()

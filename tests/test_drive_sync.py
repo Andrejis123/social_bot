@@ -20,6 +20,7 @@ from social_bot.pipeline.sync_drive import (
     _drive_folder_for_story,
     _ext_from_mime,
     _prune,
+    sweep_drive_orphans,
     sync_client_to_drive,
 )
 
@@ -721,3 +722,62 @@ def test_sync_static_story_uploads_as_jpeg(sync_env: dict[str, MagicMock]) -> No
     kwargs = sync_env["upload_bytes"].call_args.kwargs
     assert kwargs["name"] == "story123.jpg"
     assert kwargs["mime_type"] == "image/jpeg"
+
+
+# ===========================================================================
+# sweep_drive_orphans — remove Live-tree files no longer in the ledger
+# ===========================================================================
+
+
+def _sweep_env(tree: list[dict[str, str]], tracked: set[str]):
+    """Patch the sweep's I/O: tree walk, ledger ids, settings, delete."""
+    settings = MagicMock()
+    settings.google_drive_live_root_folder = "SMM - Live"
+    return (
+        patch("social_bot.pipeline.sync_drive.get_settings", return_value=settings),
+        patch("social_bot.pipeline.sync_drive.list_files_recursive", return_value=tree),
+        patch("social_bot.db.queries.list_all_tracked_drive_ids", return_value=tracked),
+        patch("social_bot.pipeline.sync_drive.delete_file"),
+    )
+
+
+_TREE = [
+    {"id": "keep-1", "name": "0.mp4", "path": "SMM - Live/c/@h/Posts/x"},
+    {"id": "orphan-1", "name": "1.mp4", "path": "SMM - Live/c/@h/Posts/x"},
+    {"id": "orphan-2", "name": "2.jpg", "path": "SMM - Live/c/@h/Stories/y"},
+]
+
+
+def test_sweep_dry_run_reports_but_does_not_delete() -> None:
+    """Dry-run (apply=False) lists orphans and never calls delete_file."""
+    p_settings, p_walk, p_tracked, p_delete = _sweep_env(_TREE, {"keep-1"})
+    with p_settings, p_walk, p_tracked, p_delete as delete_mock:
+        result = sweep_drive_orphans(apply=False)
+
+    assert result["orphans"] == 2
+    assert result["deleted"] == 0
+    assert result["applied"] is False
+    delete_mock.assert_not_called()
+
+
+def test_sweep_apply_deletes_only_untracked() -> None:
+    """apply=True deletes orphans, keeps tracked files."""
+    p_settings, p_walk, p_tracked, p_delete = _sweep_env(_TREE, {"keep-1"})
+    with p_settings, p_walk, p_tracked, p_delete as delete_mock:
+        result = sweep_drive_orphans(apply=True)
+
+    assert result["deleted"] == 2
+    deleted_ids = {c.args[0] for c in delete_mock.call_args_list}
+    assert deleted_ids == {"orphan-1", "orphan-2"}
+    assert "keep-1" not in deleted_ids
+
+
+def test_sweep_apply_aborts_on_empty_tracked_set() -> None:
+    """Safety: an empty ledger set (likely a query failure) must abort, not wipe."""
+    p_settings, p_walk, p_tracked, p_delete = _sweep_env(_TREE, set())
+    with (
+        p_settings, p_walk, p_tracked, p_delete as delete_mock,
+        pytest.raises(RuntimeError, match="empty"),
+    ):
+        sweep_drive_orphans(apply=True)
+    delete_mock.assert_not_called()
