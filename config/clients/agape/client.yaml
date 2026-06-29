@@ -12,13 +12,6 @@ accounts:
     is_owned: false
     is_active: true
 
-  # Facebook page (facebook.com/agapeslovensko). Phase A: public posts via the
-  # official Apify actor, anonymous. Cron entry must be added on the VPS separately.
-  - platform: facebook
-    handle: "agapeslovensko"
-    is_owned: false
-    is_active: true
-
 ai:
   provider: gemini
   prompt_version: "v1"
