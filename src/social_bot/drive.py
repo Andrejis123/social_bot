@@ -324,6 +324,15 @@ def list_files_recursive(folder_path: str) -> list[dict[str, str]]:
     return files
 
 
+def get_file_size(file_id: str) -> int:
+    """Return the byte size Drive reports for a file. Used to verify an upload
+    landed intact before we trust it as the archive copy and purge the source."""
+    service = _build_service()
+    meta = service.files().get(fileId=file_id, fields="size").execute()
+    # Google Docs/folders have no size; uploaded binaries always do.
+    return int(meta.get("size", 0))
+
+
 def delete_file(file_id: str) -> None:
     """Delete a Drive file by ID. Tolerates 404 (already gone)."""
     service = _build_service()

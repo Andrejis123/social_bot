@@ -83,6 +83,16 @@ sync-drive client window="30":
 cron-sync-drive client:
     just sync-drive {{client}}
 
+# Archive a reported period's media to Drive + stamp the verified-archived rows.
+# Run on report day; mirror the report window (30-days-ago .. yesterday).
+cron-archive start end:
+    uv run python -m scripts.archive_and_purge archive {{start}} {{end}}
+
+# Purge archived, grace-expired media from Supabase Storage. Dry-run unless --apply.
+# Scheduled ~a week after cron-archive so there's a recovery window.
+cron-purge grace="7":
+    uv run python -m scripts.archive_and_purge purge --grace-days {{grace}} --apply
+
 # ---------------------------------------------------------------------------
 # Migrations & checks
 # ---------------------------------------------------------------------------
@@ -94,6 +104,7 @@ print-migration:
     @cat migrations/0003_add_stories_ai.sql
     @cat migrations/0004_synthesis_artifacts.sql
     @cat migrations/0005_drive_sync.sql
+    @cat migrations/0006_archive_ledger.sql
 
 # Lint + type check + tests.
 check:

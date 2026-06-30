@@ -9,6 +9,7 @@ changes.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from itertools import batched
 from typing import Any
 
 from ..logging import get_logger
@@ -715,6 +716,85 @@ def clear_story_media_drive(story_media_id: str) -> None:
         "drive_file_id": None,
         "drive_synced_at": None,
     }).eq("id", story_media_id).execute()
+
+
+# =========================
+# Archive ledger (Supabase Storage -> Drive bundle -> purge)
+# =========================
+
+_ARCHIVE_TABLES = ("media", "story_media")
+
+
+def _update_archived_paths(
+    payload: dict[str, Any], storage_paths: list[str], *, only_unarchived: bool
+) -> int:
+    """Apply `payload` to media+story_media rows matched by storage_path, in
+    chunks. A path lives in exactly one table, so both are tried. Returns the
+    total rows updated. `only_unarchived` adds the `archived_at IS NULL` guard."""
+    sb = get_supabase()
+    updated = 0
+    for table in _ARCHIVE_TABLES:
+        for chunk in batched(storage_paths, 100):
+            q = sb.table(table).update(payload).in_("storage_path", list(chunk))
+            if only_unarchived:
+                q = q.is_("archived_at", "null")
+            updated += len(rows(q.execute()))
+    return updated
+
+
+def stamp_archived(storage_paths: list[str], *, drive_id: str) -> int:
+    """Mark media/story_media rows as archived into a verified Drive bundle.
+
+    Stamps archived_at + archive_drive_id on rows whose storage_path is in the
+    given set AND that are not already archived. The `archived_at IS NULL` guard
+    makes re-runs idempotent: a row already stamped keeps its original timestamp,
+    so the purge grace clock is never reset by a repeat archive.
+
+    Returns the number of rows stamped this call (summed across both tables).
+    """
+    if not storage_paths:
+        return 0
+    payload = {"archived_at": datetime.now(UTC).isoformat(), "archive_drive_id": drive_id}
+    stamped = _update_archived_paths(payload, storage_paths, only_unarchived=True)
+    log.info("archive.stamped", count=stamped, drive_id=drive_id)
+    return stamped
+
+
+def list_archived_purgeable(cutoff: datetime) -> list[dict[str, Any]]:
+    """Rows proven archived and past the grace window, still holding bytes.
+
+    Gate: archived_at IS NOT NULL (proven inside a verified bundle) AND
+    archived_at < cutoff (grace elapsed) AND storage_path IS NOT NULL (bytes
+    still present). Only these are eligible to tombstone. Media never archived,
+    or archived inside the grace window, is invisible here by construction.
+    """
+    sb = get_supabase()
+    out: list[dict[str, Any]] = []
+    for table in _ARCHIVE_TABLES:
+        res = (
+            sb.table(table)
+            .select("id, storage_path, archive_drive_id")
+            .lt("archived_at", cutoff.isoformat())
+            .not_.is_("archived_at", "null")
+            .not_.is_("storage_path", "null")
+            .execute()
+        )
+        for r in rows(res):
+            out.append({**r, "table": table})
+    return out
+
+
+def tombstone_archived(storage_paths: list[str]) -> int:
+    """Null storage_path on archived rows after their bytes are removed from the
+    bucket. The row stays (archived_at + archive_drive_id intact) as the ledger
+    pointer to the Drive copy. Returns rows tombstoned across both tables."""
+    if not storage_paths:
+        return 0
+    tombstoned = _update_archived_paths(
+        {"storage_path": None}, storage_paths, only_unarchived=False
+    )
+    log.info("archive.tombstoned", count=tombstoned)
+    return tombstoned
 
 
 # =========================

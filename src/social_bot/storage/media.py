@@ -94,6 +94,25 @@ def download_and_upload(
     )
 
 
+def delete_from_storage(storage_paths: list[str]) -> int:
+    """Remove objects from Supabase Storage. Returns the count requested.
+
+    Used by the archive purge after a period's bytes are confirmed inside a
+    verified Drive bundle. Idempotent: removing an already-gone path is a no-op
+    on Supabase's side, so re-runs are safe.
+    """
+    if not storage_paths:
+        return 0
+    settings = get_settings()
+    bucket = settings.supabase_media_bucket
+    sb = get_supabase()
+    # Supabase caps a single remove() payload; chunk to stay well under it.
+    for i in range(0, len(storage_paths), 100):
+        sb.storage.from_(bucket).remove(storage_paths[i : i + 100])
+    log.info("media.storage.removed", count=len(storage_paths), bucket=bucket)
+    return len(storage_paths)
+
+
 def download_from_storage(storage_path: str) -> tuple[bytes, str]:
     """
     Download a file from Supabase Storage and return (bytes, mime_type).
