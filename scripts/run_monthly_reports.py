@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 import typer
 
 from social_bot.logging import get_logger
+from social_bot.notifications import telegram
 from social_bot.reports.data import build_period
 from social_bot.reports.renderer import publish_report
 
@@ -80,6 +81,9 @@ def main(
             )
         except Exception as exc:
             log.error("monthly_reports.client_failed", client=slug, error=str(exc))
+            telegram.notify_report_failed(
+                client_slug=slug, period_label=period.label, error=str(exc),
+            )
             failures.append(slug)
 
     if failures:

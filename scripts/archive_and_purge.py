@@ -115,6 +115,10 @@ def purge(
         DEFAULT_GRACE_DAYS, "--grace-days",
         help="Only purge media archived at least this many days ago.",
     ),
+    client: str | None = typer.Option(
+        None, "--client",
+        help="Restrict the purge to a single client slug (storage-path prefix).",
+    ),
     apply: bool = typer.Option(
         False, "--apply",
         help="Execute deletions. Without this flag the run is a dry-run preview.",
@@ -123,12 +127,17 @@ def purge(
     """Tombstone archived, grace-expired media (storage delete + NULL path)."""
     cutoff = datetime.now(UTC) - timedelta(days=grace_days)
     candidates = queries.list_archived_purgeable(cutoff)
+    if client:
+        candidates = [
+            c for c in candidates if c["storage_path"].startswith(f"{client}/")
+        ]
     paths = [c["storage_path"] for c in candidates]
 
     log.info(
         "purge.candidates",
         count=len(paths),
         grace_days=grace_days,
+        client=client or "all",
         cutoff=cutoff.isoformat(),
         apply=apply,
     )

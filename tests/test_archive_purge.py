@@ -19,6 +19,7 @@ import pytest
 
 import scripts.archive_and_purge as ap
 import scripts.make_content_bundle as mcb
+import scripts.restore_from_bundle as rfb
 from scripts.make_content_bundle import BundleResult
 from social_bot.db import queries
 
@@ -126,7 +127,6 @@ def now():
 
 def test_build_bundle_excludes_skipped(monkeypatch, tmp_path):
     monkeypatch.setattr(mcb, "DEFAULT_OUT_DIR", tmp_path)
-    monkeypatch.setattr(mcb, "_RETRY_BACKOFF_S", 0)
     monkeypatch.setattr(mcb.queries, "get_client_id_by_slug", lambda s: "client-1")
     monkeypatch.setattr(
         mcb.queries, "list_accounts_for_client", lambda cid: [{"id": "acc-1"}]
@@ -161,35 +161,67 @@ def test_build_bundle_excludes_skipped(monkeypatch, tmp_path):
     assert result.zip_path.exists()
 
 
-def test_safe_download_retries_transient_failure(monkeypatch):
-    """A download that fails then succeeds is retried, not skipped."""
-    monkeypatch.setattr(mcb, "_RETRY_BACKOFF_S", 0)
-    monkeypatch.setattr(mcb, "_DOWNLOAD_RETRIES", 4)
-    attempts = {"n": 0}
+def test_safe_download_returns_none_on_failure(monkeypatch):
+    """_safe_download surfaces an exhausted download as None (retry lives below)."""
+    def fail(_path):
+        raise RuntimeError("The read operation timed out")
 
-    def flaky(_path):
-        attempts["n"] += 1
-        if attempts["n"] < 3:
-            raise RuntimeError("Server disconnected")
-        return (b"ok", "image/jpeg")
-
-    monkeypatch.setattr(mcb, "download_from_storage", flaky)
-    assert mcb._safe_download("c/x.jpg") == b"ok"
-    assert attempts["n"] == 3
-
-
-def test_safe_download_returns_none_after_exhausting_retries(monkeypatch):
-    monkeypatch.setattr(mcb, "_RETRY_BACKOFF_S", 0)
-    monkeypatch.setattr(mcb, "_DOWNLOAD_RETRIES", 3)
-    calls = {"n": 0}
-
-    def always_fail(_path):
-        calls["n"] += 1
-        raise RuntimeError("Server disconnected")
-
-    monkeypatch.setattr(mcb, "download_from_storage", always_fail)
+    monkeypatch.setattr(mcb, "download_from_storage", fail)
     assert mcb._safe_download("c/x.jpg") is None
-    assert calls["n"] == 3  # tried the full budget
+
+
+# ─────────────────────────────────────────────────────────────────────
+# download_from_storage retry (root-cause fix for unretried read timeouts)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def _fake_sb_download(side_effects):
+    """Build a fake Supabase client whose .storage...download() pops side_effects
+    (an Exception is raised, bytes are returned)."""
+    seq = list(side_effects)
+
+    class Bucket:
+        def download(self, _path):
+            v = seq.pop(0)
+            if isinstance(v, Exception):
+                raise v
+            return v
+
+    class Storage:
+        def from_(self, _b):
+            return Bucket()
+
+    return SimpleNamespace(storage=Storage())
+
+
+def test_download_from_storage_retries_then_succeeds(monkeypatch):
+    import social_bot.storage.media as media
+    monkeypatch.setattr(media, "_DOWNLOAD_BACKOFF_S", 0)
+    monkeypatch.setattr(media, "get_settings",
+                        lambda: SimpleNamespace(supabase_media_bucket="media"))
+    sb = _fake_sb_download([
+        TimeoutError("The read operation timed out"),
+        TimeoutError("The read operation timed out"),
+        b"the-bytes",
+    ])
+    monkeypatch.setattr(media, "get_supabase", lambda: sb)
+
+    data, mime = media.download_from_storage("c/h/instagram/posts/2026/06/x/0.jpg")
+    assert data == b"the-bytes"
+    assert mime == "image/jpeg"
+
+
+def test_download_from_storage_raises_after_exhausting_retries(monkeypatch):
+    import social_bot.storage.media as media
+    monkeypatch.setattr(media, "_DOWNLOAD_BACKOFF_S", 0)
+    monkeypatch.setattr(media, "_DOWNLOAD_RETRIES", 3)
+    monkeypatch.setattr(media, "get_settings",
+                        lambda: SimpleNamespace(supabase_media_bucket="media"))
+    sb = _fake_sb_download([TimeoutError("timed out")] * 3)
+    monkeypatch.setattr(media, "get_supabase", lambda: sb)
+
+    with pytest.raises(TimeoutError):
+        media.download_from_storage("c/x.jpg")
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -305,7 +337,7 @@ def test_purge_dry_run_deletes_nothing(monkeypatch):
     candidates = [{"id": "A", "storage_path": "c/a.jpg", "table": "media"}]
     calls = _patch_purge(monkeypatch, candidates)
 
-    ap.purge(grace_days=7, apply=False)
+    ap.purge(grace_days=7, client=None, apply=False)
 
     assert calls["removed"] is None
     assert calls["tombstoned"] is None
@@ -318,7 +350,7 @@ def test_purge_apply_deletes_exactly_candidates(monkeypatch):
     ]
     calls = _patch_purge(monkeypatch, candidates)
 
-    ap.purge(grace_days=7, apply=True)
+    ap.purge(grace_days=7, client=None, apply=True)
 
     assert calls["removed"] == ["c/a.jpg", "c/s.mp4"]
     assert calls["tombstoned"] == ["c/a.jpg", "c/s.mp4"]
@@ -328,10 +360,26 @@ def test_purge_apply_aborts_on_empty(monkeypatch):
     calls = _patch_purge(monkeypatch, [])
 
     with pytest.raises(SystemExit):
-        ap.purge(grace_days=7, apply=True)
+        ap.purge(grace_days=7, client=None, apply=True)
 
     assert calls["removed"] is None
     assert calls["tombstoned"] is None
+
+
+def test_purge_client_filter_scopes_to_one_client(monkeypatch):
+    """--client purges only that client's paths, leaving others (e.g. a stamped
+    client mid-grace) untouched. This is what lets us purge agape while
+    iluminatecz waits out its 7-day grace."""
+    candidates = [
+        {"id": "A", "storage_path": "agape/h/instagram/posts/x.jpg", "table": "media"},
+        {"id": "I", "storage_path": "iluminatecz/h/instagram/posts/y.jpg", "table": "media"},
+    ]
+    calls = _patch_purge(monkeypatch, candidates)
+
+    ap.purge(grace_days=0, client="agape", apply=True)
+
+    assert calls["removed"] == ["agape/h/instagram/posts/x.jpg"]
+    assert calls["tombstoned"] == ["agape/h/instagram/posts/x.jpg"]
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -430,3 +478,108 @@ def test_skipped_media_survives_purge(monkeypatch, now):
     # The skipped row keeps its bytes (storage_path intact, never tombstoned).
     assert media[1]["storage_path"] == "c/skipped.jpg"
     assert media[1]["archived_at"] is None
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Report driver: a failed client is notified to Telegram, not just logged
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_report_failure_notifies_telegram(monkeypatch):
+    import scripts.run_monthly_reports as rmr
+
+    def publish(slug, _period, **_kw):
+        if slug == "ecig-monitoring":
+            raise RuntimeError("The read operation timed out")
+        return ("x.pptx", SimpleNamespace(signed_url="u"))
+
+    notified: dict = {}
+    monkeypatch.setattr(rmr, "publish_report", publish)
+    monkeypatch.setattr(
+        rmr.telegram, "notify_report_failed", lambda **kw: notified.update(kw)
+    )
+
+    with pytest.raises(SystemExit):  # one client failed
+        rmr.main(
+            "2026-06-01", "2026-06-30", ["agape", "ecig-monitoring"],
+            platform="instagram", reuse_synthesis=False,
+        )
+
+    assert notified["client_slug"] == "ecig-monitoring"
+    assert "timed out" in notified["error"]
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Restore from bundle: arcname parsing + un-tombstone + full round trip
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_parse_arcname_post():
+    p = rfb._parse_arcname("agape", "h/instagram/posts/2026/06/POST1/3.jpg")
+    assert p is not None
+    assert p.kind == "post" and p.post_id == "POST1" and p.slide_index == 3
+    assert p.storage_path == "agape/h/instagram/posts/2026/06/POST1/3.jpg"
+
+
+def test_parse_arcname_story():
+    p = rfb._parse_arcname("agape", "h/instagram/stories/2026/06/19/STORY1.mp4")
+    assert p is not None
+    assert p.kind == "story" and p.story_id == "STORY1"
+    assert p.storage_path == "agape/h/instagram/stories/2026/06/19/STORY1.mp4"
+
+
+def test_parse_arcname_rejects_traversal():
+    assert rfb._parse_arcname("agape", "h/instagram/posts/../../../etc/0.jpg") is None
+    assert rfb._parse_arcname("agape", "/abs/instagram/posts/2026/06/P/0.jpg") is None
+
+
+def test_restore_media_row_untombstones(monkeypatch):
+    row = {"id": "m1", "post_id": "P1", "slide_index": 0, "storage_path": None,
+           "archived_at": "2026-06-01T00:00:00+00:00", "archive_drive_id": "D"}
+    sb = _FakeSB({"media": [row], "story_media": []})
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    n = queries.restore_media_row(
+        post_id="P1", slide_index=0, drive_id="D", storage_path="agape/x/0.jpg"
+    )
+    assert n == 1
+    assert row["storage_path"] == "agape/x/0.jpg"
+    assert row["archived_at"] is None
+    assert row["archive_drive_id"] is None
+
+
+def test_restore_guard_skips_live_row(monkeypatch):
+    """A still-present row (storage_path not NULL) must not be touched."""
+    row = {"id": "m1", "post_id": "P1", "slide_index": 0,
+           "storage_path": "agape/live.jpg",
+           "archived_at": "2026-06-01T00:00:00+00:00", "archive_drive_id": "D"}
+    sb = _FakeSB({"media": [row], "story_media": []})
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    n = queries.restore_media_row(
+        post_id="P1", slide_index=0, drive_id="D", storage_path="x"
+    )
+    assert n == 0
+    assert row["storage_path"] == "agape/live.jpg"  # untouched
+
+
+def test_archive_purge_restore_round_trip(monkeypatch):
+    """Full cycle: stamp -> tombstone -> restore returns the row to live."""
+    path = "agape/h/instagram/posts/2026/06/P1/0.jpg"
+    row = {"id": "m1", "post_id": "P1", "slide_index": 0, "storage_path": path,
+           "archived_at": None, "archive_drive_id": None}
+    sb = _FakeSB({"media": [row], "story_media": []})
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    queries.stamp_archived([path], drive_id="D")
+    assert row["archived_at"] is not None
+    queries.tombstone_archived([path])
+    assert row["storage_path"] is None
+
+    n = queries.restore_media_row(
+        post_id="P1", slide_index=0, drive_id="D", storage_path=path
+    )
+    assert n == 1
+    assert row["storage_path"] == path
+    assert row["archived_at"] is None
+    assert row["archive_drive_id"] is None

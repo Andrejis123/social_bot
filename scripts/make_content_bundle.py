@@ -18,7 +18,6 @@ side-by-side sees consistent naming.
 from __future__ import annotations
 
 import sys
-import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -34,12 +33,10 @@ from social_bot.storage.media import download_from_storage
 log = get_logger(__name__)
 
 DEFAULT_OUT_DIR = Path("/tmp/bundles")
-# Lower concurrency + retries: Supabase Storage drops connections under load
-# ("Server disconnected"). Fewer parallel streams and a backoff retry turn those
-# transient failures into successes, so a complete bundle is the normal outcome.
+# Lower concurrency to ease pressure on Supabase Storage, which drops connections
+# under load. Per-download retry now lives in download_from_storage, so a
+# transient blip is retried there before _safe_download ever sees a failure.
 _DOWNLOAD_WORKERS = 4
-_DOWNLOAD_RETRIES = 4
-_RETRY_BACKOFF_S = 2.0
 
 
 @dataclass(slots=True)
@@ -65,28 +62,18 @@ def _zip_arcname(storage_path: str) -> str:
 
 
 def _safe_download(storage_path: str) -> bytes | None:
-    """Download one object, retrying transient failures with linear backoff.
+    """Download one object, returning None if it fails after internal retries.
 
-    Returns None only after all attempts fail. The caller treats any None as an
-    incomplete bundle and aborts the archive (all-or-nothing), so retrying here
-    is what keeps a throttled run from degrading into a partial archive.
+    download_from_storage already retries transient failures; a None here means
+    it exhausted them. The caller treats any None as an incomplete bundle and
+    aborts the archive (all-or-nothing), so nothing partial is ever uploaded.
     """
-    last_err: Exception | None = None
-    for attempt in range(1, _DOWNLOAD_RETRIES + 1):
-        try:
-            data, _mime = download_from_storage(storage_path)
-            return data
-        except Exception as exc:
-            last_err = exc
-            if attempt < _DOWNLOAD_RETRIES:
-                time.sleep(_RETRY_BACKOFF_S * attempt)
-    log.warning(
-        "bundle.download_failed",
-        path=storage_path,
-        error=str(last_err),
-        attempts=_DOWNLOAD_RETRIES,
-    )
-    return None
+    try:
+        data, _mime = download_from_storage(storage_path)
+        return data
+    except Exception as exc:
+        log.warning("bundle.download_failed", path=storage_path, error=str(exc))
+        return None
 
 
 def build_bundle(client_slug: str, start: datetime, end: datetime) -> BundleResult:

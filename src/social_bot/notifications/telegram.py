@@ -168,6 +168,24 @@ def notify_report_generated(
     )
 
 
+def notify_report_failed(
+    *,
+    client_slug: str,
+    period_label: str,
+    error: str,
+) -> None:
+    """Ping when a client's report failed to generate after its retries.
+
+    An ops alert (not a client-facing content notification), so it names the
+    client slug rather than the report-subject @handle.
+    """
+    send(
+        f"⚠️ <b>Report failed</b>\n\n"
+        f"{client_slug} · {period_label}\n"
+        f"<code>{error}</code>"
+    )
+
+
 def notify_ai_exhausted(
     *,
     run_id: str,

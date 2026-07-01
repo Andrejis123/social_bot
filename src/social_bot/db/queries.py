@@ -784,6 +784,43 @@ def list_archived_purgeable(cutoff: datetime) -> list[dict[str, Any]]:
     return out
 
 
+def restore_media_row(
+    *, post_id: str, slide_index: int, drive_id: str, storage_path: str
+) -> int:
+    """Un-tombstone a purged post-media row: put its storage_path back and clear
+    the archive stamp. Guarded to only touch a purged row (storage_path NULL) of
+    this bundle, so it can't accidentally un-archive still-present media."""
+    sb = get_supabase()
+    res = (
+        sb.table("media")
+        .update({"storage_path": storage_path, "archived_at": None,
+                 "archive_drive_id": None})
+        .eq("post_id", post_id)
+        .eq("slide_index", slide_index)
+        .eq("archive_drive_id", drive_id)
+        .is_("storage_path", "null")
+        .execute()
+    )
+    return len(rows(res))
+
+
+def restore_story_media_row(
+    *, story_id: str, drive_id: str, storage_path: str
+) -> int:
+    """Un-tombstone a purged story-media row (matched by story_id + bundle)."""
+    sb = get_supabase()
+    res = (
+        sb.table("story_media")
+        .update({"storage_path": storage_path, "archived_at": None,
+                 "archive_drive_id": None})
+        .eq("story_id", story_id)
+        .eq("archive_drive_id", drive_id)
+        .is_("storage_path", "null")
+        .execute()
+    )
+    return len(rows(res))
+
+
 def tombstone_archived(storage_paths: list[str]) -> int:
     """Null storage_path on archived rows after their bytes are removed from the
     bucket. The row stays (archived_at + archive_drive_id intact) as the ledger

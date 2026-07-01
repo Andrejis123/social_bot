@@ -11,6 +11,7 @@ April media" is a single prefix query.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from urllib.parse import urlparse
@@ -25,6 +26,12 @@ log = get_logger(__name__)
 
 # Reasonable defaults for social CDNs. Some media URLs are multi-megabyte videos.
 _DEFAULT_TIMEOUT = httpx.Timeout(60.0, connect=15.0)
+
+# Supabase Storage reads occasionally time out or drop the connection under load.
+# Retry with linear backoff so a single transient blip does not fail the caller
+# (a report render, describe job, Drive sync, or bundle download).
+_DOWNLOAD_RETRIES = 4
+_DOWNLOAD_BACKOFF_S = 2.0
 
 
 @dataclass(slots=True)
@@ -54,6 +61,17 @@ def build_storage_path(
     )
 
 
+def _upload_bytes(storage_path: str, data: bytes, content_type: str) -> None:
+    """Upsert raw bytes to a storage path. Overwrites on retry instead of
+    erroring; shared by the scrape upload and the restore path."""
+    bucket = get_settings().supabase_media_bucket
+    get_supabase().storage.from_(bucket).upload(
+        path=storage_path,
+        file=data,
+        file_options={"content-type": content_type, "upsert": "true"},
+    )
+
+
 def download_and_upload(
     *,
     source_url: str,
@@ -64,9 +82,6 @@ def download_and_upload(
 
     Raises on any HTTP error so the caller can record it in run_item_errors.
     """
-    settings = get_settings()
-    bucket = settings.supabase_media_bucket
-
     log.debug("media.download.start", url=source_url)
     with httpx.Client(timeout=_DEFAULT_TIMEOUT, follow_redirects=True) as http:
         resp = http.get(source_url)
@@ -75,23 +90,19 @@ def download_and_upload(
         content_type = resp.headers.get("content-type", "application/octet-stream")
 
     log.debug("media.upload.start", path=storage_path, bytes=len(body), ctype=content_type)
-    sb = get_supabase()
-    sb.storage.from_(bucket).upload(
-        path=storage_path,
-        file=body,
-        file_options={
-            "content-type": content_type,
-            # Overwrite on retry instead of erroring — dedupe logic above us
-            # means this only fires for new posts, but be resilient anyway.
-            "upsert": "true",
-        },
-    )
+    _upload_bytes(storage_path, body, content_type)
 
     return UploadedMedia(
         storage_path=storage_path,
         content_type=content_type,
         bytes_size=len(body),
     )
+
+
+def upload_to_storage(storage_path: str, data: bytes) -> None:
+    """Upload raw bytes to a storage path (upsert). Used to restore purged media
+    from a Drive bundle back into Supabase Storage at its original path."""
+    _upload_bytes(storage_path, data, _mime_from_storage_path(storage_path))
 
 
 def delete_from_storage(storage_paths: list[str]) -> int:
@@ -123,9 +134,19 @@ def download_from_storage(storage_path: str) -> tuple[bytes, str]:
     settings = get_settings()
     bucket = settings.supabase_media_bucket
     sb = get_supabase()
-    data: bytes = sb.storage.from_(bucket).download(storage_path)
-    mime = _mime_from_storage_path(storage_path)
-    return data, mime
+    for attempt in range(1, _DOWNLOAD_RETRIES + 1):
+        try:
+            data: bytes = sb.storage.from_(bucket).download(storage_path)
+            return data, _mime_from_storage_path(storage_path)
+        except Exception as exc:
+            if attempt >= _DOWNLOAD_RETRIES:
+                raise
+            log.warning(
+                "media.download.retry",
+                path=storage_path, attempt=attempt, error=str(exc),
+            )
+            time.sleep(_DOWNLOAD_BACKOFF_S * attempt)
+    raise AssertionError("unreachable")  # loop returns or raises
 
 
 def _mime_from_storage_path(path: str) -> str:

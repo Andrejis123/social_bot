@@ -29,7 +29,11 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
-from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
+from googleapiclient.http import (
+    MediaFileUpload,
+    MediaIoBaseDownload,
+    MediaIoBaseUpload,
+)
 
 from .config import REPO_ROOT, get_settings
 from .logging import get_logger
@@ -322,6 +326,19 @@ def list_files_recursive(folder_path: str) -> list[dict[str, str]]:
 
     _walk(root_id, folder_path)
     return files
+
+
+def download_file(file_id: str) -> bytes:
+    """Download a Drive file's full bytes by ID. Used to restore a content
+    bundle back into Supabase Storage after a purge."""
+    service = _build_service()
+    request = service.files().get_media(fileId=file_id)
+    buf = io.BytesIO()
+    downloader = MediaIoBaseDownload(buf, request)
+    done = False
+    while not done:
+        _status, done = downloader.next_chunk()
+    return buf.getvalue()
 
 
 def get_file_size(file_id: str) -> int:
