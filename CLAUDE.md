@@ -53,6 +53,11 @@ VPS host + path live in the `deploy` recipe (justfile) and in memory
 - `just check` = ruff + mypy + pytest. Lint is green — keep it green.
 - Pre-commit hook runs `/security-review` + `/simplify` automatically. Never
   skip with `--no-verify`; fix the underlying issue instead.
+- **When a protocol calls for a skill (`/security-review`, `/simplify`,
+  `/write-tests`), you MUST invoke the actual Skill tool** — the one that spawns
+  its sub-agents. Never hand-write the analysis inline and present it as if the
+  skill ran. Faking a skill step is a serious integrity failure, worse than the
+  shortcut itself. If a skill genuinely can't run, say so; don't fabricate output.
 
 ## Conventions
 

@@ -49,18 +49,21 @@ Legend: [x] done · [~] in progress · [ ] pending · (VPS) runs on the server.
 Timeline (all UTC). iluminatecz already archived+stamped 2026-07-01 18:14
 (drive_id 1PQFChv7rqBuZnZJHpjc2BOuEBbRbp5gq).
 
-- [ ] (VPS) Wire temporary test crons after deploy:
-  - Archive fires ~15 min out: `archive 2026-06-01 2026-06-30 agape iluminatecz`
-    (agape fresh; iluminatecz idempotent re-confirm).
-  - agape purge scheduled **2 Jul**: `purge --client agape --grace-days 1 --apply`.
-  - iluminatecz purge scheduled **8 Jul**: `purge --client iluminatecz --grace-days 7 --apply`.
-- [ ] **Today (1 Jul)**: confirm agape zip lands in Drive `<agape>/data/`; diff its
-  namelist vs agape's storage paths (insurance before any purge).
-- [ ] **Tomorrow (2 Jul)**: confirm agape purged (storage_breakdown drops); **test
-  recovery** — `restore_from_bundle agape <drive_id> --apply`, then confirm a report
+- [x] Batch deployed (commit `1c18ad8`, deploy-check + import smoke passed).
+- [x] (VPS) Wired temporary test crons (marked block in crontab, backup saved):
+  - `2 20 1 7 *`  archive `agape iluminatecz` (fires **1 Jul 20:02 UTC**).
+  - `30 20 2 7 *` purge `--client agape --grace-days 1 --apply` (**2 Jul 20:30**).
+  - `30 20 8 7 *` purge `--client iluminatecz --grace-days 7 --apply` (**8 Jul 20:30**).
+- [x] **Today (1 Jul)**: archive cron fired 20:02:29. agape zip in Drive
+  (drive_id `1gB1PSZv2S0RXoFmc7zS_Ro6Rx6-aBVuc`, 40 files, 147 MB, skipped=0,
+  stamped=40). iluminatecz idempotent re-confirm (104 files, stamped=0, keeps its
+  18:14 clock, drive_id `1PQFChv7...`). Insurance passed: agape purge dry-run =
+  exactly 40 candidates = the archived set (skipped=0 so 100% in the zip).
+- [ ] **Tomorrow (2 Jul, after 20:30)**: confirm agape purged (storage_breakdown drops);
+  **test recovery** — `restore_from_bundle agape <drive_id> --apply`, confirm a report
   regenerates.
-- [ ] **8 Jul**: confirm iluminatecz auto-purged (Notion reminder set).
-- [ ] Remove the temporary test crons afterward.
+- [ ] **8 Jul (after 20:30)**: confirm iluminatecz auto-purged (Notion reminder set).
+- [ ] **Remove the TEMP test crons** once the experiment is done (mothball).
 
 ## Open follow-ups (deferred, in Notion)
 
