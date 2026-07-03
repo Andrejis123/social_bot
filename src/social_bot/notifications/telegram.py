@@ -186,6 +186,59 @@ def notify_report_failed(
     )
 
 
+def notify_archive_completed(
+    *,
+    client_slug: str,
+    period_label: str,
+    breakdown: str,
+    size_mb: float,
+    drive_link: str,
+) -> None:
+    """Ping when a client's period was archived to Drive and verified.
+
+    Ops alert. `breakdown` is the per-account posts/stories/files text from
+    storage.summary.render_summary.
+    """
+    link = f'<a href="{drive_link}">zip in Drive</a>' if drive_link else "zip in Drive"
+    send(
+        f"📦 <b>Archived</b>\n\n"
+        f"{client_slug} · {period_label} · {size_mb:.1f} MB\n"
+        f"{breakdown}\n"
+        f"{link}"
+    )
+
+
+def notify_archive_failed(*, client_slug: str, error: str) -> None:
+    """Ping when a client's archive aborted (partial bundle, upload mismatch...)."""
+    send(
+        f"⚠️ <b>Archive failed</b>\n\n"
+        f"{client_slug}\n"
+        f"<code>{error}</code>"
+    )
+
+
+def notify_purge_completed(*, client_label: str, breakdown: str) -> None:
+    """Ping when archived, grace-expired media was purged from the bucket.
+
+    `breakdown` is the per-account posts/stories/files text from
+    storage.summary.render_summary.
+    """
+    send(
+        f"🗑 <b>Purged</b>\n\n"
+        f"{client_label}\n"
+        f"{breakdown}"
+    )
+
+
+def notify_purge_failed(*, client_label: str, error: str) -> None:
+    """Ping when a purge failed mid-run (storage delete or tombstone raised)."""
+    send(
+        f"⚠️ <b>Purge failed</b>\n\n"
+        f"{client_label}\n"
+        f"<code>{error}</code>"
+    )
+
+
 def notify_ai_exhausted(
     *,
     run_id: str,

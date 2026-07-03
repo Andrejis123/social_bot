@@ -33,7 +33,9 @@ import typer
 from social_bot import drive
 from social_bot.db import queries
 from social_bot.logging import get_logger
+from social_bot.notifications import telegram
 from social_bot.storage.media import delete_from_storage
+from social_bot.storage.summary import render_summary, summarize_paths
 
 from .make_content_bundle import build_bundle
 
@@ -91,6 +93,8 @@ def archive(
                 )
 
             stamped = queries.stamp_archived(bundle.written_paths, drive_id=drive_id)
+            size_mb = round(local_size / 1024 / 1024, 2)
+            summary = summarize_paths(bundle.written_paths)
             log.info(
                 "archive.client_done",
                 client=slug,
@@ -99,10 +103,20 @@ def archive(
                 written=len(bundle.written_paths),
                 stamped=stamped,
                 skipped=bundle.skipped,
-                size_mb=round(local_size / 1024 / 1024, 2),
+                posts=summary.total_posts,
+                stories=summary.total_stories,
+                size_mb=size_mb,
+            )
+            telegram.notify_archive_completed(
+                client_slug=slug,
+                period_label=f"{start} .. {end}",
+                breakdown=render_summary(summary, verb="archived"),
+                size_mb=size_mb,
+                drive_link=uploaded.get("webViewLink", ""),
             )
         except Exception as exc:
             log.error("archive.client_failed", client=slug, error=str(exc))
+            telegram.notify_archive_failed(client_slug=slug, error=str(exc))
             failures.append(slug)
 
     if failures:
@@ -155,10 +169,29 @@ def purge(
     if not paths:
         raise SystemExit("purge --apply: no purgeable candidates; aborting.")
 
-    removed = delete_from_storage(paths)
-    tombstoned = queries.tombstone_archived(paths)
-    log.info("purge.done", removed=removed, tombstoned=tombstoned)
-    typer.echo(f"Purged {removed} files; tombstoned {tombstoned} rows.")
+    client_label = client or "all clients"
+    try:
+        removed = delete_from_storage(paths)
+        tombstoned = queries.tombstone_archived(paths)
+    except Exception as exc:
+        log.error("purge.failed", client=client_label, error=str(exc))
+        telegram.notify_purge_failed(client_label=client_label, error=str(exc))
+        raise
+
+    summary = summarize_paths(paths)
+    log.info(
+        "purge.done",
+        removed=removed,
+        tombstoned=tombstoned,
+        posts=summary.total_posts,
+        stories=summary.total_stories,
+        items=summary.total_items,
+    )
+    breakdown = render_summary(summary, verb="purged")
+    telegram.notify_purge_completed(client_label=client_label, breakdown=breakdown)
+    typer.echo(
+        f"Purged {removed} files; tombstoned {tombstoned} rows.\n{breakdown}"
+    )
 
 
 if __name__ == "__main__":
