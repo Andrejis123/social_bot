@@ -70,6 +70,33 @@ VPS host + path live in the `deploy` recipe (justfile) and in memory
 - **Date format**: Drive folder names and any other user-visible date strings use
   European convention `DD-MM-YYYY` (e.g. `28-06-2026`), not ISO `YYYY-MM-DD`.
 
+## Deleting scraped content — storage-first, then sweep (data-integrity invariant)
+
+Supabase Storage has **no FK cascade from Postgres**: deleting a `media`/`story_media`/
+`posts`/`stories` row does **not** delete its bucket object. Because every row-driven
+cleanup tool discovers files by walking rows (`account → posts → media.storage_path`),
+any row deleted before its bytes are removed becomes a **permanent orphan** ("ghost")
+that no row-driven tool can ever rediscover. This is exactly how agape Facebook + old-
+month files survived multiple purges (root-caused 2026-07-04).
+
+Rules, non-negotiable:
+1. **Never raw-delete content rows without deleting their `storage_path` objects first.**
+   Use `storage.media.delete_from_storage(paths)` (storage) *before* the row `.delete()`.
+   `scripts/_cleanup_stale_junk.py` (`collect` + `apply_delete`) already does this order —
+   reuse it for targeted client/account wipes rather than hand-rolling deletes.
+2. **After ANY bulk row deletion or purge, run the orphan sweep as the mandatory net:**
+   `python -m scripts.cleanup_storage_orphans [--prefix <client>] --apply`. It lists the
+   real bucket and deletes objects with no DB row — the *only* tool that reaches ghosts.
+   Dry-run (no `--apply`) first to eyeball the count; it aborts an apply if the global
+   tracked set is empty (guards against a failed query nuking the bucket).
+3. Mirror on the Drive side with `scripts/cleanup_drive_orphans.py` after Drive-touching
+   purges. Verify a wipe with a dry-run root sweep: `orphans: 0` means no ghosts remain.
+4. **`restore_from_bundle` only recovers *tombstoned* rows** (it uploads bytes, then
+   PATCHes rows where `storage_path IS NULL AND archive_drive_id=<zip>`). Once the rows
+   are **hard-deleted**, it uploads 40 objects and matches 0 rows → creates fresh orphans
+   (watch its `unmatched=` counter). So after a full row wipe, a Drive zip is cold storage:
+   recovery is a **re-ingest**, not `restore_from_bundle`.
+
 ## Memory & todos
 
 - **Todos**: Notion DB `31ff3868-b444-8054-aa56-e3f8db6d8720` (Project = Social_Bot)

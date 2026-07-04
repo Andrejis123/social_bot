@@ -48,6 +48,15 @@ def _walk(prefix: str = ""):
         offset += _PAGE
 
 
+def list_object_paths(prefix: str = "") -> list[str]:
+    """Return every object path under prefix in the media bucket (recursive).
+
+    The authoritative, row-independent view of what physically occupies the
+    bucket. Used by the orphan sweep to find objects no DB row points at.
+    """
+    return [path for path, _size in _walk(prefix)]
+
+
 def compute_storage_breakdown() -> StorageBreakdown:
     b = StorageBreakdown()
     by_kind: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])

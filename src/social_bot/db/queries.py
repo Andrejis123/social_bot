@@ -909,6 +909,28 @@ def list_all_tracked_drive_ids() -> set[str]:
     return ids
 
 
+def list_all_tracked_storage_paths() -> set[str]:
+    """Every storage_path currently referenced by media + story_media.
+
+    Used by the Supabase Storage orphan sweep to decide which bucket objects are
+    still tracked. Paginates in full: a truncated result would misclassify
+    tracked objects as orphans, so we never rely on the implicit 1000-row cap.
+    """
+    sb = get_supabase()
+
+    def query(table: str) -> Any:
+        return (
+            sb.table(table)
+            .select("storage_path")
+            .not_.is_("storage_path", "null")
+        )
+
+    paths: set[str] = set()
+    for table in ("media", "story_media"):
+        paths.update(r["storage_path"] for r in fetch_all(partial(query, table)))
+    return paths
+
+
 def record_item_error(
     run_id: str,
     *,
