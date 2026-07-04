@@ -1,0 +1,8 @@
+# Client slugs the cron drivers act on by default (monthly reports, archive).
+# Single source of truth — scripts/run_monthly_reports.py and
+# scripts/archive_and_purge.py both read this instead of hardcoding lists.
+# config/ is volume-mounted on the VPS, so edits here need no image rebuild.
+clients:
+  - agape
+  - ecig-monitoring
+  - iluminatecz

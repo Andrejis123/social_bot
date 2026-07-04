@@ -68,12 +68,16 @@ def _ingest_one_account(
     cached_pk = account_row.get("platform_account_id")
     scraper = get_scraper(account.platform)
 
-    with RunContext(
+    # suppress_fatal: a scraper blow-up marks this run failed but must not
+    # abort the caller's other accounts.
+    run = RunContext(
         job_name="ingest_stories",
         client_slug=loaded.slug,
         account_handle=account.handle,
         platform=account.platform,
-    ) as run:
+        suppress_fatal=True,
+    )
+    with run:
         stories = scraper.scrape_stories(account.handle, platform_account_id=cached_pk)
         discovered_pk = getattr(scraper, "discovered_platform_account_id", None)
         if discovered_pk and discovered_pk != cached_pk:
@@ -104,7 +108,8 @@ def _ingest_one_account(
                     story.platform_story_id, stage="db", message=str(exc)
                 )
 
-        return run.run_id
+    # Outside the with-block: reached even when a fatal was suppressed.
+    return run.run_id
 
 
 def _maybe_classify_story(

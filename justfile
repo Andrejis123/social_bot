@@ -134,3 +134,20 @@ deploy:
 # assets/ COPY). Check logic lives in scripts/deploy_check.py — extend it there.
 deploy-check:
     ssh {{vps}} 'cd {{vps_path}} && docker run --rm --env-file .env social-bot python -m scripts.deploy_check'
+
+# ---------------------------------------------------------------------------
+# Crontab — deploy/crontab.txt is the versioned source of truth. The VPS
+# crontab is server-side state; edit the file here, then install. Always
+# diff first: a live edit made over SSH that was never committed would be
+# silently overwritten by install.
+# ---------------------------------------------------------------------------
+
+# Show drift between the committed crontab and what's live on the VPS.
+crontab-diff:
+    ssh {{vps}} 'crontab -l' | diff -u - deploy/crontab.txt && echo "crontab in sync" || true
+
+# Install deploy/crontab.txt as the VPS crontab (backs up the live one first).
+crontab-install:
+    ssh {{vps}} 'crontab -l > {{vps_path}}/crontab.backup.$(date +%Y%m%d-%H%M%S)'
+    ssh {{vps}} 'crontab -' < deploy/crontab.txt
+    @echo "Installed deploy/crontab.txt on the VPS."

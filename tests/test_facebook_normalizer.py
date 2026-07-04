@@ -105,3 +105,28 @@ def test_raw_payload_preserved() -> None:
     raw = _find("facebook_official_agape.json", "1064573886232516")
     post = _normalize_post_facebook(raw)
     assert post.raw == raw
+
+
+def test_two_video_post_has_unique_slide_indexes() -> None:
+    # An FB post with 2+ videos must not emit two sentinel covers: the DB has
+    # unique(post_id, slide_index) and both covers would share one storage path.
+    item = {
+        "postId": "multi-video",
+        "text": "two clips",
+        "media": [
+            {
+                "__typename": "Video",
+                "videoDeliveryLegacyFields": {"browser_native_hd_url": "https://cdn/v1.mp4"},
+                "thumbnailImage": {"uri": "https://cdn/c1.jpg"},
+            },
+            {
+                "__typename": "Video",
+                "videoDeliveryLegacyFields": {"browser_native_hd_url": "https://cdn/v2.mp4"},
+                "thumbnailImage": {"uri": "https://cdn/c2.jpg"},
+            },
+        ],
+    }
+    post = _normalize_post_facebook(item)
+    indexes = [m.slide_index for m in post.media]
+    assert len(indexes) == len(set(indexes)), f"duplicate slide_index in {indexes}"
+    assert indexes.count(REEL_COVER_SLIDE_INDEX) <= 1

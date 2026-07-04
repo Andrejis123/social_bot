@@ -15,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from social_bot.ai.providers.gemini import ClassifyResult
 from social_bot.scrapers.base import ScrapedMedia, ScrapedPost, ScrapedStory
 
@@ -191,8 +193,10 @@ def test_platform_filter_selects_one_platform(monkeypatch):
     )
     monkeypatch.setattr(ip, "load_client", lambda slug: loaded)
 
-    # Without --platform, the shared handle matches both accounts (2 runs).
-    assert len(ingest_posts_for_client("testclient", account_handle="dup")) == 2
+    # Without --platform, the shared handle is ambiguous and must fail loudly
+    # (silently scraping both platforms caused the agape FB failure loop).
+    with pytest.raises(ValueError, match="dup"):
+        ingest_posts_for_client("testclient", account_handle="dup")
     # --platform narrows to just the facebook account.
     run_ids = ingest_posts_for_client("testclient", account_handle="dup", platform="facebook")
     assert len(run_ids) == 1

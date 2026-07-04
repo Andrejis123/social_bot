@@ -20,7 +20,7 @@ from __future__ import annotations
 import traceback
 from dataclasses import dataclass, field
 from types import TracebackType
-from typing import Literal, Self
+from typing import Self
 
 from ..db import queries
 from ..logging import bind_run_context, clear_run_context, get_logger
@@ -36,6 +36,10 @@ class RunContext:
     platform: str = "instagram"
 
     silent: bool = False  # suppress Telegram notifications (run_history still recorded)
+    # When True, a fatal exception inside the block is swallowed after being
+    # recorded (status 'failed', traceback in error_summary). Per-account
+    # drivers set this so one account's blow-up can't abort its siblings.
+    suppress_fatal: bool = False
 
     run_id: str = ""
     items_total: int = 0
@@ -101,7 +105,7 @@ class RunContext:
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
-    ) -> Literal[False]:
+    ) -> bool:
         if exc_val is not None:
             self._fatal_summary = f"{exc_val.__class__.__name__}: {exc_val}\n{''.join(traceback.format_tb(exc_tb))}"
             status = "failed"
@@ -135,7 +139,9 @@ class RunContext:
         )
         clear_run_context()
         self._send_notification(status)
-        return False  # do not swallow exceptions
+        # Fatal already recorded (status + error_summary + notification);
+        # swallow it only when the caller opted into per-run isolation.
+        return self.suppress_fatal and exc_val is not None
 
     def _send_notification(self, status: str) -> None:
         if self.silent and status == "success":

@@ -130,7 +130,8 @@ def sync_client_to_drive(client_slug: str, window_days: int = 30) -> str:
     settings = get_settings()
     live_root = settings.google_drive_live_root_folder
 
-    with RunContext(job_name="sync_drive", client_slug=client_slug, silent=True) as run:
+    run = RunContext(job_name="sync_drive", client_slug=client_slug, silent=True)
+    with run:
         client_id = queries.get_client_id_by_slug(client_slug)
         if not client_id:
             log.error("sync_drive.client_not_found", slug=client_slug)
@@ -240,7 +241,8 @@ def sync_client_to_drive(client_slug: str, window_days: int = 30) -> str:
         # --- Prune expired Drive files ---
         _prune(since, run)
 
-        return run.run_id
+
+    return run.run_id
 
 
 def sweep_drive_orphans(*, apply: bool = False) -> dict[str, Any]:

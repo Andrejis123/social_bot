@@ -125,6 +125,39 @@ def test_carousel_video_child_gets_cover():
     assert post.media[2].source_url == "https://cdn/2_cover.jpg"
 
 
+# RED: bug 6 — passes once _normalize_post emits at most one
+# REEL_COVER_SLIDE_INDEX item per post (DB has unique(post_id, slide_index);
+# two video children currently produce two slide_index=99 covers, the second
+# insert violates the constraint and overwrites the first cover in storage).
+def test_carousel_with_two_video_children_has_unique_slide_indexes():
+    raw = {
+        "id": "car2",
+        "type": "Sidecar",
+        "timestamp": "2026-04-01T00:00:00.000Z",
+        "childPosts": [
+            {
+                "type": "Video",
+                "videoUrl": "https://cdn/1.mp4",
+                "videoDuration": 5.0,
+                "displayUrl": "https://cdn/1_cover.jpg",
+            },
+            {
+                "type": "Video",
+                "videoUrl": "https://cdn/2.mp4",
+                "videoDuration": 7.0,
+                "displayUrl": "https://cdn/2_cover.jpg",
+            },
+        ],
+    }
+    post = _normalize_post(raw)
+
+    indexes = [m.slide_index for m in post.media]
+    assert len(set(indexes)) == len(indexes), f"duplicate slide_index in {indexes}"
+    assert indexes.count(REEL_COVER_SLIDE_INDEX) <= 1
+    videos = [m for m in post.media if m.media_type == "video"]
+    assert [m.slide_index for m in videos] == [0, 1]
+
+
 # -------------------------
 # get-leads fallback normalizer (`_normalize_post_fallback`)
 # -------------------------

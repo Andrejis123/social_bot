@@ -96,6 +96,18 @@ def load_client(slug: str) -> LoadedClient:
     )
 
 
+def default_cron_clients() -> list[str]:
+    """Client slugs the cron drivers act on by default (reports, archive).
+
+    Read from config/cron_clients.yaml — one editable place instead of a
+    hardcoded list per script. config/ is volume-mounted on the VPS, so the
+    set changes without an image rebuild.
+    """
+    path = get_settings().clients_config_dir.parent / "cron_clients.yaml"
+    data = _read_yaml(path)
+    return [str(slug) for slug in data.get("clients", [])]
+
+
 def _read_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Missing config file: {path}")

@@ -31,6 +31,7 @@ from datetime import UTC, datetime, timedelta
 import typer
 
 from social_bot import drive
+from social_bot.clients import default_cron_clients
 from social_bot.db import queries
 from social_bot.logging import get_logger
 from social_bot.notifications import telegram
@@ -42,7 +43,6 @@ from .make_content_bundle import build_bundle
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 log = get_logger(__name__)
 
-DEFAULT_CLIENTS = ["agape", "ecig-monitoring", "iluminatecz"]
 DEFAULT_GRACE_DAYS = 7
 
 
@@ -59,7 +59,7 @@ def archive(
     end_dt = datetime.fromisoformat(end).replace(
         hour=23, minute=59, second=59, tzinfo=UTC,
     )
-    slugs = clients or DEFAULT_CLIENTS
+    slugs = clients or default_cron_clients()
     failures: list[str] = []
 
     for slug in slugs:

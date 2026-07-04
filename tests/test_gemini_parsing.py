@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from google.genai import errors as genai_errors
 
 from social_bot.ai.providers import gemini
 from social_bot.ai.providers.gemini import (
@@ -126,7 +127,7 @@ def test_classify_retries_on_transient_then_succeeds(monkeypatch):
     calls = _patch(
         monkeypatch,
         outcomes=[
-            RuntimeError("503 UNAVAILABLE"),
+            _CodedAPIError(503, "503 UNAVAILABLE"),
             '{"category": "News", "confidence": 1.0}',
         ],
     )
@@ -140,6 +141,51 @@ def test_classify_fatal_error_not_retried(monkeypatch):
     with pytest.raises(RuntimeError, match="400"):
         classify_with_gemini(prompt="p", media=[], categories=["News"])
     assert calls["n"] == 1
+
+
+# -------------------------
+# classify_with_gemini — retry gate must key on the exception code, not on
+# substrings of str(exc) (a 400 whose message merely mentions "429" is fatal;
+# a 503 whose message lacks the marker words is transient). Reference
+# implementation: reports.synthesis._generate_with_retry.
+# -------------------------
+
+
+class _CodedAPIError(genai_errors.APIError):
+    """APIError whose str() is only the message, with no status/code text."""
+
+    def __init__(self, code: int, message: str):
+        super().__init__(code, {"error": {"message": message, "status": "X"}})
+
+    def __str__(self) -> str:
+        return self.message or ""
+
+
+# RED: bug 8 — passes once the retry gate reads exc.code/status_code instead
+# of substring-matching str(exc).
+def test_classify_retries_coded_503_without_marker_text(monkeypatch):
+    calls = _patch(
+        monkeypatch,
+        outcomes=[
+            _CodedAPIError(503, "service melted down"),  # no 503/429/marker in str()
+            '{"category": "News", "confidence": 1.0}',
+        ],
+    )
+    result = classify_with_gemini(prompt="p", media=[], categories=["News"])
+    assert result.category == "News"
+    assert calls["n"] == 2  # transient by code -> retried once, then succeeded
+
+
+# RED: bug 8 — passes once the retry gate reads exc.code/status_code instead
+# of substring-matching str(exc).
+def test_classify_coded_400_mentioning_429_is_not_retried(monkeypatch):
+    calls = _patch(
+        monkeypatch,
+        outcomes=[_CodedAPIError(400, "field must be one of 429 categories")],
+    )
+    with pytest.raises(genai_errors.APIError):
+        classify_with_gemini(prompt="p", media=[], categories=["News"])
+    assert calls["n"] == 1  # fatal by code -> raised immediately, no retries
 
 
 # -------------------------

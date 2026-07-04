@@ -1,0 +1,13 @@
+SHELL=/bin/bash
+
+# Scrape/describe crons removed 2026-07-02 (mothball — stopped periodic scraping; enough test data).
+# Backup of prior crontab: /opt/social-bot/crontab.backup.20260702-065044
+
+# ── Monthly reports — DISABLED 2026-07-02 (mothball, no fresh data to report). Uncomment to re-arm for a paying client. ──
+# Runs 1st of month 08:00 UTC. Period = last 30 days ending yesterday UTC.
+# 0  8  1 * *  docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/tmp_reports:/tmp/reports social-bot python -m scripts.run_monthly_reports $(date -u -d "30 days ago" +\%Y-\%m-\%d) $(date -u -d "yesterday" +\%Y-\%m-\%d) >> /var/log/social-bot.log 2>&1
+
+# --- TEMP archive/purge test crons (added 2026-07-01, REMOVE after test) ---
+2 20 1 7 *  docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.archive_and_purge archive 2026-06-01 2026-06-30 agape iluminatecz >> /var/log/social-bot.log 2>&1
+30 20 2 7 *  docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.archive_and_purge purge --client agape --grace-days 1 --apply >> /var/log/social-bot.log 2>&1
+30 20 8 7 *  docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.archive_and_purge purge --client iluminatecz --grace-days 7 --apply >> /var/log/social-bot.log 2>&1

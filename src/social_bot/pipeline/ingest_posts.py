@@ -56,6 +56,17 @@ def ingest_posts_for_client(
     if platform:
         accounts = [a for a in accounts if a.platform == platform]
 
+    # A handle can exist on more than one platform (agapeslovensko was on both
+    # IG and FB). Targeting it without --platform is ambiguous — fail loudly
+    # instead of silently scraping every platform (that exact silence caused a
+    # failure loop against a dropped Facebook account).
+    if account_handle and len({a.platform for a in accounts}) > 1:
+        platforms = sorted(a.platform for a in accounts)
+        raise ValueError(
+            f"account handle {account_handle!r} exists on multiple platforms "
+            f"{platforms}; pass platform= (--platform) to disambiguate"
+        )
+
     run_ids: list[str] = []
     for account in accounts:
         if account.platform not in supported_platforms():
@@ -102,12 +113,16 @@ def _ingest_one_account(
     cached_pk = account_row.get("platform_account_id")
     scraper = get_scraper(account.platform)
 
-    with RunContext(
+    # suppress_fatal: a scraper blow-up (Apify outage, bad handle) marks this
+    # run failed but must not abort the caller's other accounts.
+    run = RunContext(
         job_name="ingest_posts",
         client_slug=loaded.slug,
         account_handle=account.handle,
         platform=account.platform,
-    ) as run:
+        suppress_fatal=True,
+    )
+    with run:
         posts = scraper.scrape_posts(
             account.handle,
             limit=limit,
@@ -149,7 +164,8 @@ def _ingest_one_account(
                     post.platform_post_id, stage="db", message=str(exc)
                 )
 
-        return run.run_id
+    # Outside the with-block: reached even when a fatal was suppressed.
+    return run.run_id
 
 
 # =========================

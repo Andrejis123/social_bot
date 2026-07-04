@@ -14,11 +14,12 @@ from collections import defaultdict
 import typer
 
 from social_bot.ai.classifier import classify
+from social_bot.ai.media_sampler import fetch_storage_blobs
 from social_bot.clients import load_client
 from social_bot.db import queries
 from social_bot.logging import get_logger, setup_logging
 from social_bot.notifications.telegram import notify_ai_exhausted, notify_ai_retry_completed
-from social_bot.scrapers.base import ScrapedMedia, ScrapedPost
+from social_bot.scrapers.base import ScrapedPost
 
 app = typer.Typer(add_completion=False)
 log = get_logger(__name__)
@@ -42,32 +43,11 @@ def main(run_id: str = typer.Option("", "--run-id", help="Original run ID for cr
     gemini_count = 0
     openai_count = 0
     still_pending = 0
-    # Track exhausted posts per client for grouped alerts
-    exhausted: dict[str, list[str]] = defaultdict(list)
+    # Track exhausted posts per (client, platform) for grouped alerts
+    exhausted: dict[tuple[str, str], list[str]] = defaultdict(list)
 
     for row in posts:
         post_id = row["id"]
-
-        db_media = queries.list_media_for_post(post_id)
-        media = [
-            ScrapedMedia(
-                slide_index=m["slide_index"],
-                media_type=m["media_type"],
-                source_url=m.get("source_url"),
-            )
-            for m in db_media
-            if m.get("source_url")
-        ]
-        post = ScrapedPost(
-            platform=row["platform"],
-            platform_post_id=row["platform_post_id"],
-            post_type=row["post_type"],
-            caption=row.get("caption"),
-            permalink=row.get("permalink"),
-            posted_at=None,
-            media=media,
-            raw={},
-        )
 
         account = queries.get_account_with_client(row["account_id"])
         if not account or not account.get("client_slug"):
@@ -80,9 +60,26 @@ def main(run_id: str = typer.Option("", "--run-id", help="Original run ID for cr
             log.warning("retry_ai.client_load_failed", post_id=post_id, error=str(exc))
             continue
 
+        # Fetched last, after the skip checks above — retries fire hours after
+        # the scrape, so the CDN source_url is expired and media bytes come
+        # from the permanent Supabase Storage copy instead.
+        blobs = fetch_storage_blobs(
+            queries.list_media_for_post(post_id), row["platform_post_id"]
+        )
+        post = ScrapedPost(
+            platform=row["platform"],
+            platform_post_id=row["platform_post_id"],
+            post_type=row["post_type"],
+            caption=row.get("caption"),
+            permalink=row.get("permalink"),
+            posted_at=None,
+            media=[],
+            raw={},
+        )
+
         time.sleep(INTER_POST_DELAY)
         try:
-            result = classify(post=post, loaded_client=loaded)
+            result = classify(post=post, loaded_client=loaded, blobs=blobs)
             if result is None:
                 continue
             queries.update_post_ai(
@@ -104,7 +101,7 @@ def main(run_id: str = typer.Option("", "--run-id", help="Original run ID for cr
             log.warning("retry_ai.failed", post_id=post_id, attempts=new_attempts, error=str(exc))
             failed += 1
             if new_attempts >= MAX_ATTEMPTS:
-                exhausted[account["client_slug"]].append(post_id)
+                exhausted[(account["client_slug"], row["platform"])].append(post_id)
             else:
                 still_pending += 1
 
@@ -119,8 +116,8 @@ def main(run_id: str = typer.Option("", "--run-id", help="Original run ID for cr
         still_pending=still_pending,
     )
 
-    # Send exhaustion alerts grouped by client
-    for client_slug, post_ids in exhausted.items():
+    # Send exhaustion alerts grouped by (client, platform)
+    for (client_slug, platform), post_ids in exhausted.items():
         try:
             loaded = load_client(client_slug)
             client_name = loaded.name
@@ -129,7 +126,7 @@ def main(run_id: str = typer.Option("", "--run-id", help="Original run ID for cr
         notify_ai_exhausted(
             run_id=run_id,
             client_name=client_name,
-            platform="instagram",
+            platform=platform,
             post_ids=post_ids,
         )
 

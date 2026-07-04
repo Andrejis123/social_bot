@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -53,7 +53,7 @@ def build_storage_path(
     posted_at: datetime | None,
 ) -> str:
     """Compose a deterministic object path."""
-    date = posted_at or datetime.utcnow()
+    date = posted_at or datetime.now(UTC)
     ext = _guess_extension(source_url, media_type)
     return (
         f"{client_slug}/{account_handle}/{platform}/posts/"

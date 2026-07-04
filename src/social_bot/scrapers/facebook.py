@@ -28,7 +28,13 @@ from apify_client import ApifyClient
 
 from ..config import get_settings
 from ..logging import get_logger
-from .base import REEL_COVER_SLIDE_INDEX, ScrapedMedia, ScrapedPost, ScrapedStory
+from .base import (
+    REEL_COVER_SLIDE_INDEX,
+    ScrapedMedia,
+    ScrapedPost,
+    ScrapedStory,
+    dedupe_reel_cover,
+)
 
 log = get_logger(__name__)
 
@@ -176,7 +182,7 @@ def _extract_media(item: dict[str, Any]) -> list[ScrapedMedia]:
                 out.append(
                     ScrapedMedia(slide_index=len(out), media_type="image", source_url=src)
                 )
-    return out
+    return dedupe_reel_cover(out)
 
 
 def _video_url(media: dict[str, Any]) -> str | None:

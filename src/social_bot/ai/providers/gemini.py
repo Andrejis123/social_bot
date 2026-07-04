@@ -17,6 +17,7 @@ import json
 from dataclasses import dataclass
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from ...config import get_settings
@@ -26,6 +27,19 @@ log = get_logger(__name__)
 
 _INLINE_MAX_BYTES = 18 * 1024 * 1024  # conservative of the 20MB Gemini limit
 _RETRY_DELAYS = [2, 5, 15]  # seconds between Gemini call retries
+
+# Transient statuses worth retrying — same gate as synthesis._generate_with_retry.
+_RETRYABLE_CODES = (429, 500, 502, 503, 504)
+
+
+def is_retryable(exc: Exception) -> bool:
+    """Key retries on the APIError status code, never on substrings of the
+    message (a 400 whose text merely mentions '429' is fatal; a 503 whose
+    text lacks marker words is transient)."""
+    if not isinstance(exc, genai_errors.APIError):
+        return False
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    return code in _RETRYABLE_CODES
 
 
 @dataclass(slots=True)
@@ -101,8 +115,7 @@ def classify_with_gemini(
                 reasoning=data.get("reasoning"),
             )
         except Exception as exc:
-            msg = str(exc)
-            if any(code in msg for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED")):
+            if is_retryable(exc):
                 last_exc = exc
                 continue
             raise
@@ -161,8 +174,7 @@ def describe_with_gemini(
             data = json.loads(text)
             return str(data["description"])
         except Exception as exc:
-            msg = str(exc)
-            if any(code in msg for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED")):
+            if is_retryable(exc):
                 last_exc = exc
                 continue
             raise

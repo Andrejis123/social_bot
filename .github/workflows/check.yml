@@ -1,0 +1,34 @@
+# CI gate: the same three checks as `just check` (ruff + mypy + pytest).
+# Runs on every push/PR to main so a broken gate can never sit unnoticed again
+# (the lint gate was once red for 7 weeks with no signal — this prevents that).
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  # Dummy values for pydantic-settings required fields; tests mock all real
+  # clients, but any lazy get_settings() call must not crash on a missing var.
+  SUPABASE_URL: https://ci-dummy.supabase.co
+  SUPABASE_SERVICE_KEY: ci-dummy
+  APIFY_TOKEN: ci-dummy
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+      - name: Lint
+        run: uv run ruff check .
+      - name: Type check
+        run: uv run mypy src
+      - name: Tests
+        run: uv run pytest -q

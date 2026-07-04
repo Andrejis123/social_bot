@@ -35,6 +35,7 @@ class _Query:
         self._values: dict = {}
         self._filters: list = []  # (op, col, arg, negate)
         self._negate_next = False
+        self._range: tuple[int, int] | None = None
 
     # builders -------------------------------------------------------
     def select(self, *_a, **_k):
@@ -72,6 +73,10 @@ class _Query:
         self._negate_next = True
         return self
 
+    def range(self, start, stop):
+        self._range = (start, stop)
+        return self
+
     # execution ------------------------------------------------------
     def _match(self, row) -> bool:
         for op, col, arg, negate in self._filters:
@@ -100,6 +105,9 @@ class _Query:
         elif self._mode == "delete":
             for r in matched:
                 self._rows.remove(r)
+        elif self._range is not None:  # pagination slice, selects only
+            start, stop = self._range
+            matched = matched[start : stop + 1]
         return SimpleNamespace(data=[dict(r) for r in matched])
 
 

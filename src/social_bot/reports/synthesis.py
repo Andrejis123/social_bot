@@ -40,6 +40,7 @@ from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types
 
+from ..ai.providers.gemini import is_retryable
 from ..config import REPO_ROOT, get_settings
 from ..logging import get_logger
 from .data import PostRow
@@ -449,6 +450,8 @@ def _generate_with_retry(client, *, model, contents, config, label: str):
 
     Gemini Flash returns 503 UNAVAILABLE during demand spikes; the SDK's
     internal tenacity layer doesn't always retry. Outer retry with sleep.
+    The retryable-status policy is shared with the classify/describe provider
+    (ai.providers.gemini.is_retryable) so the two can't drift.
     """
     delays = [4, 12, 30, 60]
     last_exc = None
@@ -461,8 +464,7 @@ def _generate_with_retry(client, *, model, contents, config, label: str):
                 model=model, contents=contents, config=config,
             )
         except genai_errors.APIError as exc:
-            code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
-            if code not in (429, 500, 502, 503, 504):
+            if not is_retryable(exc):
                 raise
             last_exc = exc
     raise last_exc  # type: ignore[misc]

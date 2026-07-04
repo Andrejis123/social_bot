@@ -9,7 +9,11 @@ is posts-only for now (stories + restricted/age-gated pages are a later phase,
 and Facebook is not yet wired into cron); YouTube and TikTok remain queued
 behind a real-client driver.
 
-**Live:** 3 clients × 6 active accounts, nightly stories cron + weekly posts cron, monthly report cron wired but disabled until first paying client.
+**Status:** mothballed since 2026-07-02 — scraping crons removed after the test
+period (3 clients, 6 accounts, enough data banked for prototype reports); the
+monthly report cron is wired but disabled. Re-arm via `deploy/crontab.txt` +
+`just crontab-install` when the first paying client lands. The default client
+set for cron drivers lives in `config/cron_clients.yaml`.
 
 ## Stack
 
@@ -27,7 +31,7 @@ behind a real-client driver.
 1. `brew install uv just`
 2. `just bootstrap`
 3. `cp .env.example .env` → fill `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `APIFY_TOKEN`, `GEMINI_API_KEY`, `HIKER_API_KEY`, `TELEGRAM_*`, `GOOGLE_OAUTH_*`. See `.env.example` for the full list.
-4. Supabase dashboard: create a private Storage bucket called `media`; run `migrations/0001_initial_schema.sql`.
+4. Supabase dashboard: create a private Storage bucket called `media`; run all migrations (`just print-migration` prints them in order — paste into the SQL editor).
 5. `just scrape-posts <client_slug> 5`
 
 ## Layout

@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 
 import typer
 
+from social_bot.clients import default_cron_clients
 from social_bot.logging import get_logger
 from social_bot.notifications import telegram
 from social_bot.reports.data import build_period
@@ -33,8 +34,6 @@ from social_bot.reports.renderer import publish_report
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 log = get_logger(__name__)
-
-DEFAULT_CLIENTS = ["agape", "ecig-monitoring", "iluminatecz"]
 
 
 @app.command()
@@ -60,7 +59,7 @@ def main(
     end_dt = datetime.fromisoformat(end).replace(
         hour=23, minute=59, second=59, tzinfo=UTC,
     )
-    slugs = clients or DEFAULT_CLIENTS
+    slugs = clients or default_cron_clients()
     period = build_period(start_dt, end_dt)
 
     log.info(

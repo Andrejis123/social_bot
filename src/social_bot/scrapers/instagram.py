@@ -36,7 +36,13 @@ from apify_client import ApifyClient
 from ..config import get_settings
 from ..logging import get_logger
 from ._hiker_client import HikerClient, HikerFatal, HikerTransient
-from .base import REEL_COVER_SLIDE_INDEX, ScrapedMedia, ScrapedPost, ScrapedStory
+from .base import (
+    REEL_COVER_SLIDE_INDEX,
+    ScrapedMedia,
+    ScrapedPost,
+    ScrapedStory,
+    dedupe_reel_cover,
+)
 
 log = get_logger(__name__)
 
@@ -474,6 +480,8 @@ def _profile_url(handle: str) -> str:
     return f"https://www.instagram.com/{handle.lstrip('@')}/"
 
 
+
+
 def _parse_ts(value: Any) -> datetime | None:
     if not value:
         return None
@@ -548,6 +556,7 @@ def _normalize_post(raw: dict[str, Any]) -> ScrapedPost:
     if post_type == "carousel" and children:
         for idx, child in enumerate(children):
             media.extend(_media_from_child(child, idx))
+        media = dedupe_reel_cover(media)
     else:
         # Single-media post (image, video, or reel).
         is_video = post_type in {"video", "reel"} or bool(raw.get("videoUrl"))
@@ -716,7 +725,9 @@ def _normalize_post_hiker(raw: dict[str, Any]) -> ScrapedPost:
 
     if post_type == "carousel":
         children = raw.get("carousel_media") or []
-        media = [m for idx, c in enumerate(children) for m in _hiker_media_from_item(c, idx)]
+        media = dedupe_reel_cover(
+            [m for idx, c in enumerate(children) for m in _hiker_media_from_item(c, idx)]
+        )
         if not media:
             # Carousel with no children — happens occasionally. Fall back to
             # the cover image so downstream pipeline still has something.

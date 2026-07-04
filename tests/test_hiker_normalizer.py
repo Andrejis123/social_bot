@@ -195,6 +195,40 @@ def test_carousel_with_empty_children_falls_back_to_cover():
     assert post.media[0].source_url == "https://cdn.example/cover.jpg"
 
 
+# RED: bug 6 — passes once _normalize_post_hiker emits at most one
+# REEL_COVER_SLIDE_INDEX item per post (DB has unique(post_id, slide_index);
+# two video children currently produce two slide_index=99 covers, the second
+# insert violates the constraint and overwrites the first cover in storage).
+def test_carousel_with_two_video_children_has_unique_slide_indexes():
+    def _video_child(i: int) -> dict:
+        return {
+            "media_type": 2,
+            "video_versions": [{"url": f"https://cdn.example/vid{i}.mp4"}],
+            "image_versions2": {"candidates": [{"url": f"https://cdn.example/cover{i}.jpg"}]},
+            "video_duration": 3.0,
+            "original_width": 1080,
+            "original_height": 1920,
+        }
+
+    raw = {
+        "code": "TWOVIDS",
+        "pk": "1000000000000000005",
+        "media_type": 8,
+        "product_type": "carousel_container",
+        "carousel_media": [_video_child(0), _video_child(1)],
+        "caption": {"text": "carousel with two clips"},
+        "taken_at": 1700000000,
+    }
+    post = _normalize_post_hiker(raw)
+
+    indexes = [m.slide_index for m in post.media]
+    assert len(set(indexes)) == len(indexes), f"duplicate slide_index in {indexes}"
+    assert indexes.count(REEL_COVER_SLIDE_INDEX) <= 1
+    # Both videos themselves must survive at their carousel positions.
+    videos = [m for m in post.media if m.media_type == "video"]
+    assert [m.slide_index for m in videos] == [0, 1]
+
+
 def test_view_count_falls_back_to_play_count():
     raw = {
         "code": "VIEW1",

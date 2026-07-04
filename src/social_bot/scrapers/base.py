@@ -16,6 +16,25 @@ from typing import Any, Protocol
 REEL_COVER_SLIDE_INDEX = 99
 
 
+def dedupe_reel_cover(media: list[ScrapedMedia]) -> list[ScrapedMedia]:
+    """Keep at most one cover at REEL_COVER_SLIDE_INDEX per post.
+
+    A post with 2+ videos would otherwise emit one sentinel cover per video:
+    the DB has unique(post_id, slide_index), so the second insert fails, and
+    both covers share one storage path, so the bytes get overwritten. First
+    video's cover wins. Every scraper's normalizer must run its media list
+    through this before returning."""
+    out: list[ScrapedMedia] = []
+    seen_cover = False
+    for m in media:
+        if m.slide_index == REEL_COVER_SLIDE_INDEX:
+            if seen_cover:
+                continue
+            seen_cover = True
+        out.append(m)
+    return out
+
+
 @dataclass(slots=True)
 class ScrapedMedia:
     slide_index: int

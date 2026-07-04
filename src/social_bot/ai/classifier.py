@@ -32,16 +32,23 @@ def classify(
     *,
     post: ScrapedPost,
     loaded_client: LoadedClient,
+    blobs: list[MediaBlob] | None = None,
 ) -> ClassifyResult | None:
-    """Return a classification or None if AI is disabled / unusable for this post."""
+    """Return a classification or None if AI is disabled / unusable for this post.
+
+    `blobs`: pre-fetched media bytes. Ingest passes None (media is fetched from
+    the still-fresh CDN source_url); retry jobs pass storage-sourced blobs
+    because the CDN URLs have long expired by the time a retry fires.
+    """
     provider = loaded_client.config.ai.provider
     if not loaded_client.prompt_template.strip():
         log.info("ai.skip.no_prompt", client=loaded_client.slug)
         return None
 
     prompt = _render_prompt(loaded_client, post)
-    sample = pick_for_ai(post)
-    blobs = _fetch_media_blobs(sample)
+    if blobs is None:
+        sample = pick_for_ai(post)
+        blobs = _fetch_media_blobs(sample)
     categories = [c.name for c in loaded_client.categories]
 
     if provider == "openai":

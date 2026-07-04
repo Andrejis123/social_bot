@@ -16,10 +16,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Install deps first — this layer caches until pyproject.toml changes.
-COPY pyproject.toml README.md ./
+# Install deps first — this layer caches until pyproject.toml/uv.lock change.
+# --frozen with a committed uv.lock: a lockfile mismatch fails the build loudly
+# instead of silently resolving fresh dependency versions on every deploy.
+COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
-RUN uv sync --frozen --no-dev || uv sync --no-dev
+RUN uv sync --frozen --no-dev
 
 # Copy everything else (scripts, config, migrations, brand assets).
 COPY scripts/ ./scripts/

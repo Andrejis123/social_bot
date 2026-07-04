@@ -21,7 +21,6 @@ build/
 
 # uv
 .uv/
-uv.lock
 
 # Editor
 .vscode/

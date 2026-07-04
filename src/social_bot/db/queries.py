@@ -1,19 +1,23 @@
 """
 Typed CRUD helpers for Supabase tables.
 
-This is the *only* module that knows about column names. Pipeline code calls
-these functions — if we ever swap Supabase for raw Postgres, only this file
-changes.
+Pipeline code should call these functions rather than querying tables directly.
+The original goal — this being the only module that knows column names — has
+eroded: reports/data.py, health.py, storage/synthesis.py, and several scripts
+query Supabase directly. New query logic belongs here; treat those as the
+backlog, not license.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from functools import partial
 from itertools import batched
 from typing import Any
 
 from ..logging import get_logger
-from .client import get_supabase, rows, single
+from ..scrapers.base import REEL_COVER_SLIDE_INDEX
+from .client import fetch_all, fetch_all_chunked, get_supabase, rows, single
 
 log = get_logger(__name__)
 
@@ -188,7 +192,7 @@ def update_post_description(
     sb.table("posts").update(
         {
             "ai_description": description,
-            "ai_description_at": datetime.utcnow().isoformat(),
+            "ai_description_at": datetime.now(UTC).isoformat(),
             "ai_provider": provider,
         }
     ).eq("id", post_id).execute()
@@ -250,7 +254,7 @@ def update_post_ai(
             "ai_reasoning": reasoning,
             "ai_prompt_version": prompt_version,
             "ai_provider": provider,
-            "ai_analyzed_at": datetime.utcnow().isoformat(),
+            "ai_analyzed_at": datetime.now(UTC).isoformat(),
         }
     ).eq("id", post_id).execute()
 
@@ -315,7 +319,7 @@ def insert_media(
                 "width": width,
                 "height": height,
                 "bytes": bytes_size,
-                "downloaded_at": datetime.utcnow().isoformat(),
+                "downloaded_at": datetime.now(UTC).isoformat(),
             }
         )
         .execute()
@@ -345,58 +349,58 @@ def list_posts_in_period(
     account_ids: list[str], start: datetime, end: datetime,
 ) -> list[dict[str, Any]]:
     sb = get_supabase()
-    res = (
+    return fetch_all(lambda: (
         sb.table("posts")
         .select("id, account_id, posted_at, platform_post_id")
         .in_("account_id", account_ids)
         .gte("posted_at", start.isoformat())
         .lte("posted_at", end.isoformat())
-        .execute()
-    )
-    return rows(res)
+    ))
 
 
 def list_media_for_posts(post_ids: list[str]) -> list[dict[str, Any]]:
     if not post_ids:
         return []
     sb = get_supabase()
-    res = (
-        sb.table("media")
-        .select("post_id, slide_index, storage_path, media_type")
-        .in_("post_id", post_ids)
-        .not_.is_("storage_path", "null")
-        .execute()
-    )
-    return rows(res)
+
+    def query(ids: list[str]) -> Any:
+        return (
+            sb.table("media")
+            .select("post_id, slide_index, storage_path, media_type")
+            .in_("post_id", ids)
+            .not_.is_("storage_path", "null")
+        )
+
+    return fetch_all_chunked(query, post_ids)
 
 
 def list_stories_in_period(
     account_ids: list[str], start: datetime, end: datetime,
 ) -> list[dict[str, Any]]:
     sb = get_supabase()
-    res = (
+    return fetch_all(lambda: (
         sb.table("stories")
         .select("id, account_id, posted_at, platform_story_id")
         .in_("account_id", account_ids)
         .gte("posted_at", start.isoformat())
         .lte("posted_at", end.isoformat())
-        .execute()
-    )
-    return rows(res)
+    ))
 
 
 def list_story_media_for_stories(story_ids: list[str]) -> list[dict[str, Any]]:
     if not story_ids:
         return []
     sb = get_supabase()
-    res = (
-        sb.table("story_media")
-        .select("story_id, storage_path, media_type")
-        .in_("story_id", story_ids)
-        .not_.is_("storage_path", "null")
-        .execute()
-    )
-    return rows(res)
+
+    def query(ids: list[str]) -> Any:
+        return (
+            sb.table("story_media")
+            .select("story_id, storage_path, media_type")
+            .in_("story_id", ids)
+            .not_.is_("storage_path", "null")
+        )
+
+    return fetch_all_chunked(query, story_ids)
 
 
 def list_media_for_post(post_id: str) -> list[dict[str, Any]]:
@@ -487,7 +491,7 @@ def update_story_ai(
             "ai_reasoning": reasoning,
             "ai_prompt_version": prompt_version,
             "ai_provider": provider,
-            "ai_analyzed_at": datetime.utcnow().isoformat(),
+            "ai_analyzed_at": datetime.now(UTC).isoformat(),
         }
     ).eq("id", story_id).execute()
 
@@ -544,7 +548,7 @@ def update_story_description(
     sb.table("stories").update(
         {
             "ai_description": description,
-            "ai_description_at": datetime.utcnow().isoformat(),
+            "ai_description_at": datetime.now(UTC).isoformat(),
             "ai_provider": provider,
         }
     ).eq("id", story_id).execute()
@@ -578,7 +582,7 @@ def insert_story_media(
             "source_url": source_url,
             "storage_path": storage_path,
             "duration_seconds": duration_seconds,
-            "downloaded_at": datetime.utcnow().isoformat(),
+            "downloaded_at": datetime.now(UTC).isoformat(),
         }
     ).execute()
 
@@ -593,7 +597,7 @@ def list_unsynced_post_media(account_ids: list[str], since: datetime) -> list[di
     if not account_ids:
         return []
     sb = get_supabase()
-    res = (
+    res_rows = fetch_all(lambda: (
         sb.table("media")
         .select(
             "id, slide_index, media_type, storage_path, "
@@ -603,11 +607,10 @@ def list_unsynced_post_media(account_ids: list[str], since: datetime) -> list[di
         .gte("posts.posted_at", since.isoformat())
         .is_("drive_synced_at", "null")
         .not_.is_("storage_path", "null")
-        .neq("slide_index", 99)
-        .execute()
-    )
+        .neq("slide_index", REEL_COVER_SLIDE_INDEX)
+    ))
     out: list[dict[str, Any]] = []
-    for r in rows(res):
+    for r in res_rows:
         post: dict[str, Any] = r.get("posts") or {}
         out.append({
             "media_id": r["id"],
@@ -627,7 +630,7 @@ def list_unsynced_story_media(account_ids: list[str], since: datetime) -> list[d
     if not account_ids:
         return []
     sb = get_supabase()
-    res = (
+    res_rows = fetch_all(lambda: (
         sb.table("story_media")
         .select(
             "id, media_type, storage_path, "
@@ -637,10 +640,9 @@ def list_unsynced_story_media(account_ids: list[str], since: datetime) -> list[d
         .gte("stories.posted_at", since.isoformat())
         .is_("drive_synced_at", "null")
         .not_.is_("storage_path", "null")
-        .execute()
-    )
+    ))
     out: list[dict[str, Any]] = []
-    for r in rows(res):
+    for r in res_rows:
         story: dict[str, Any] = r.get("stories") or {}
         out.append({
             "story_media_id": r["id"],
@@ -673,32 +675,30 @@ def mark_story_media_synced(story_media_id: str, drive_file_id: str) -> None:
 def list_expired_drive_media(cutoff: datetime) -> list[dict[str, Any]]:
     """Post media with Drive files whose post is older than cutoff (for retention prune)."""
     sb = get_supabase()
-    res = (
+    res_rows = fetch_all(lambda: (
         sb.table("media")
         .select("id, drive_file_id, posts!inner(posted_at)")
         .not_.is_("drive_synced_at", "null")
         .lt("posts.posted_at", cutoff.isoformat())
-        .execute()
-    )
+    ))
     return [
         {"media_id": r["id"], "drive_file_id": r["drive_file_id"]}
-        for r in rows(res)
+        for r in res_rows
     ]
 
 
 def list_expired_drive_story_media(cutoff: datetime) -> list[dict[str, Any]]:
     """Story media with Drive files older than cutoff (for retention prune)."""
     sb = get_supabase()
-    res = (
+    res_rows = fetch_all(lambda: (
         sb.table("story_media")
         .select("id, drive_file_id, stories!inner(posted_at)")
         .not_.is_("drive_synced_at", "null")
         .lt("stories.posted_at", cutoff.isoformat())
-        .execute()
-    )
+    ))
     return [
         {"story_media_id": r["id"], "drive_file_id": r["drive_file_id"]}
-        for r in rows(res)
+        for r in res_rows
     ]
 
 
@@ -769,17 +769,19 @@ def list_archived_purgeable(cutoff: datetime) -> list[dict[str, Any]]:
     or archived inside the grace window, is invisible here by construction.
     """
     sb = get_supabase()
-    out: list[dict[str, Any]] = []
-    for table in _ARCHIVE_TABLES:
-        res = (
+
+    def query(table: str) -> Any:
+        return (
             sb.table(table)
             .select("id, storage_path, archive_drive_id")
             .lt("archived_at", cutoff.isoformat())
             .not_.is_("archived_at", "null")
             .not_.is_("storage_path", "null")
-            .execute()
         )
-        for r in rows(res):
+
+    out: list[dict[str, Any]] = []
+    for table in _ARCHIVE_TABLES:
+        for r in fetch_all(partial(query, table)):
             out.append({**r, "table": table})
     return out
 
@@ -875,7 +877,7 @@ def finish_run(
     sb.table("run_history").update(
         {
             "status": status,
-            "finished_at": datetime.utcnow().isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
             "items_total": items_total,
             "items_new": items_new,
             "items_updated": items_updated,
@@ -893,23 +895,17 @@ def list_all_tracked_drive_ids() -> set[str]:
     files as orphans, so we never rely on the implicit 1000-row cap.
     """
     sb = get_supabase()
+
+    def query(table: str) -> Any:
+        return (
+            sb.table(table)
+            .select("drive_file_id")
+            .not_.is_("drive_file_id", "null")
+        )
+
     ids: set[str] = set()
     for table in ("media", "story_media"):
-        offset = 0
-        page = 1000
-        while True:
-            res = (
-                sb.table(table)
-                .select("drive_file_id")
-                .not_.is_("drive_file_id", "null")
-                .range(offset, offset + page - 1)
-                .execute()
-            )
-            page_rows = rows(res)
-            ids.update(r["drive_file_id"] for r in page_rows)
-            if len(page_rows) < page:
-                break
-            offset += page
+        ids.update(r["drive_file_id"] for r in fetch_all(partial(query, table)))
     return ids
 
 

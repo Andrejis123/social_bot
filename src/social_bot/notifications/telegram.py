@@ -7,7 +7,9 @@ Failures are logged and swallowed — a notification failure must never crash a 
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import html
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -17,7 +19,9 @@ from ..logging import get_logger
 log = get_logger(__name__)
 
 _API = "https://api.telegram.org/bot{token}/sendMessage"
-_TZ = timezone(timedelta(hours=1))  # UTC+1
+# Local time for human-facing timestamps; DST-aware (a fixed UTC+1 showed
+# retry times an hour off all summer).
+_TZ = ZoneInfo("Europe/Bratislava")
 
 _JOB_LABEL = {
     "ingest_posts": "Posts",
@@ -29,6 +33,19 @@ _JOB_LABEL = {
 
 def _label(job_name: str) -> str:
     return _JOB_LABEL.get(job_name, job_name)
+
+
+def _esc(value: str) -> str:
+    """HTML-escape a dynamic value before interpolating into parse_mode=HTML
+    text. Error strings especially carry '<' and '&' (tracebacks, HTTP bodies);
+    unescaped they make Telegram 400 and the alert is silently dropped."""
+    return html.escape(value, quote=False)
+
+
+def _code(value: str) -> str:
+    """A <code> span with escaping built in — use for any dynamic value so a
+    new call site can't forget the escape."""
+    return f"<code>{_esc(value)}</code>"
 
 
 def send(text: str) -> None:
@@ -181,8 +198,8 @@ def notify_report_failed(
     """
     send(
         f"⚠️ <b>Report failed</b>\n\n"
-        f"{client_slug} · {period_label}\n"
-        f"<code>{error}</code>"
+        f"{_esc(client_slug)} · {_esc(period_label)}\n"
+        f"{_code(error)}"
     )
 
 
@@ -212,8 +229,8 @@ def notify_archive_failed(*, client_slug: str, error: str) -> None:
     """Ping when a client's archive aborted (partial bundle, upload mismatch...)."""
     send(
         f"⚠️ <b>Archive failed</b>\n\n"
-        f"{client_slug}\n"
-        f"<code>{error}</code>"
+        f"{_esc(client_slug)}\n"
+        f"{_code(error)}"
     )
 
 
@@ -234,8 +251,8 @@ def notify_purge_failed(*, client_label: str, error: str) -> None:
     """Ping when a purge failed mid-run (storage delete or tombstone raised)."""
     send(
         f"⚠️ <b>Purge failed</b>\n\n"
-        f"{client_label}\n"
-        f"<code>{error}</code>"
+        f"{_esc(client_label)}\n"
+        f"{_code(error)}"
     )
 
 
