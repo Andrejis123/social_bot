@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import sys
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import islice
 from pathlib import Path
 
 from social_bot import drive
@@ -102,20 +104,39 @@ def build_bundle(client_slug: str, start: datetime, end: datetime) -> BundleResu
     rows = media + story_media
     paths = [row["storage_path"] for row in rows]
 
-    with ThreadPoolExecutor(max_workers=_DOWNLOAD_WORKERS) as ex:
-        blobs = list(ex.map(_safe_download, paths))
-
     total_bytes = 0
     written_paths: list[str] = []
     skipped = 0
-    with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path, blob in zip(paths, blobs, strict=True):
+    # Stream downloads through a bounded window instead of buffering the whole
+    # period in one list: a large client (hundreds of story mp4s) otherwise
+    # materializes every blob at once and gets OOM-killed on the ~1GB droplet.
+    # We keep at most `window` downloads outstanding; each blob is written into
+    # the zip and dropped before the window advances, so peak memory is
+    # window x max-file, not the whole period. Writing before submitting the
+    # next task holds outstanding-but-unwritten blobs at <= window. Submission
+    # order (== `paths` order) is preserved, so the zip layout is deterministic.
+    window = 2 * _DOWNLOAD_WORKERS
+    with (
+        zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf,
+        ThreadPoolExecutor(max_workers=_DOWNLOAD_WORKERS) as ex,
+    ):
+        path_iter = iter(paths)
+        inflight: deque[tuple[str, Future[bytes | None]]] = deque(
+            (p, ex.submit(_safe_download, p)) for p in islice(path_iter, window)
+        )
+        while inflight:
+            path, fut = inflight.popleft()
+            blob = fut.result()
             if blob is None:
                 skipped += 1
-                continue
-            zf.writestr(_zip_arcname(path), blob)
-            written_paths.append(path)
-            total_bytes += len(blob)
+            else:
+                zf.writestr(_zip_arcname(path), blob)
+                written_paths.append(path)
+                total_bytes += len(blob)
+                del blob  # drop before advancing the window
+            nxt = next(path_iter, None)
+            if nxt is not None:
+                inflight.append((nxt, ex.submit(_safe_download, nxt)))
 
     log.info(
         "bundle.zip_finished",

@@ -11,6 +11,8 @@ rather than asserted against a call chain. No live Supabase/Drive/API is touched
 """
 from __future__ import annotations
 
+import threading
+import zipfile
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -128,12 +130,13 @@ def now():
     return datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 1. build_bundle excludes skipped (failed) downloads from written_paths
-# ─────────────────────────────────────────────────────────────────────
+def _patch_bundle_queries(monkeypatch, tmp_path, media_paths):
+    """Patch DEFAULT_OUT_DIR + the queries build_bundle calls; return (start, end).
 
-
-def test_build_bundle_excludes_skipped(monkeypatch, tmp_path):
+    Only list_media_for_posts varies between bundle tests (the `media_paths`
+    storage paths); everything else is fixed: one client, one account, one post,
+    no stories.
+    """
     monkeypatch.setattr(mcb, "DEFAULT_OUT_DIR", tmp_path)
     monkeypatch.setattr(mcb.queries, "get_client_id_by_slug", lambda s: "client-1")
     monkeypatch.setattr(
@@ -144,13 +147,24 @@ def test_build_bundle_excludes_skipped(monkeypatch, tmp_path):
     monkeypatch.setattr(
         mcb.queries,
         "list_media_for_posts",
-        lambda ids: [
-            {"storage_path": "c/good1.jpg"},
-            {"storage_path": "c/skipped.jpg"},
-            {"storage_path": "c/good2.jpg"},
-        ],
+        lambda ids: [{"storage_path": p} for p in media_paths],
     )
     monkeypatch.setattr(mcb.queries, "list_story_media_for_stories", lambda ids: [])
+    return (
+        datetime(2026, 5, 1, tzinfo=UTC),
+        datetime(2026, 5, 31, 23, 59, 59, tzinfo=UTC),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 1. build_bundle excludes skipped (failed) downloads from written_paths
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_build_bundle_excludes_skipped(monkeypatch, tmp_path):
+    start, end = _patch_bundle_queries(
+        monkeypatch, tmp_path, ["c/good1.jpg", "c/skipped.jpg", "c/good2.jpg"]
+    )
 
     def fake_download(path):
         if path == "c/skipped.jpg":
@@ -159,8 +173,6 @@ def test_build_bundle_excludes_skipped(monkeypatch, tmp_path):
 
     monkeypatch.setattr(mcb, "download_from_storage", fake_download)
 
-    start = datetime(2026, 5, 1, tzinfo=UTC)
-    end = datetime(2026, 5, 31, 23, 59, 59, tzinfo=UTC)
     result = mcb.build_bundle("test-client", start, end)
 
     assert set(result.written_paths) == {"c/good1.jpg", "c/good2.jpg"}
@@ -176,6 +188,70 @@ def test_safe_download_returns_none_on_failure(monkeypatch):
 
     monkeypatch.setattr(mcb, "download_from_storage", fail)
     assert mcb._safe_download("c/x.jpg") is None
+
+
+def test_build_bundle_streams_without_materializing_whole_period(monkeypatch, tmp_path):
+    """build_bundle must NOT hold every period blob resident at once.
+
+    Root cause of the OOM: `blobs = list(ex.map(_safe_download, paths))` buffers
+    every downloaded object into one list before the zip is written, so peak
+    memory scales with the whole period (223 files / ~636MB on ecig June ->
+    SIGKILL on the 961MB droplet). The fix bounds resident blobs to a sliding
+    window of ~2 * _DOWNLOAD_WORKERS: each blob is written into the zip and
+    discarded before the window advances.
+
+    We instrument the two ends of a blob's lifetime:
+      * a successful download increments a shared "resident" counter (and peak),
+      * writing it into the zip (`writestr`) decrements it — the consumption
+        point in both the current and streamed implementations.
+    A failed download holds nothing, so it neither increments nor is written.
+    """
+    n_paths = 40
+    failing = {"c/skipped.jpg"}
+    paths = [f"c/media_{i}.jpg" for i in range(n_paths - 1)]
+    paths.insert(n_paths // 2, "c/skipped.jpg")  # one failure in the middle
+    assert len(paths) == n_paths
+
+    start, end = _patch_bundle_queries(monkeypatch, tmp_path, paths)
+
+    lock = threading.Lock()
+    state = {"resident": 0, "peak": 0}
+
+    def tracking_download(path):
+        if path in failing:
+            raise RuntimeError("download failed")
+        with lock:
+            state["resident"] += 1
+            state["peak"] = max(state["peak"], state["resident"])
+        return (b"x" * 100, "image/jpeg")
+
+    monkeypatch.setattr(mcb, "download_from_storage", tracking_download)
+
+    orig_writestr = zipfile.ZipFile.writestr
+
+    def tracking_writestr(self, zinfo_or_arcname, data, *a, **k):
+        with lock:
+            state["resident"] -= 1
+        return orig_writestr(self, zinfo_or_arcname, data, *a, **k)
+
+    monkeypatch.setattr(zipfile.ZipFile, "writestr", tracking_writestr)
+
+    result = mcb.build_bundle("test-client", start, end)
+
+    bound = 2 * mcb._DOWNLOAD_WORKERS
+    # Memory invariant: never buffer the whole period.
+    assert state["peak"] < n_paths, (
+        f"build_bundle materialized {state['peak']} of {n_paths} blobs at once "
+        "(whole-period buffering -> OOM)"
+    )
+    assert state["peak"] <= bound, (
+        f"peak resident blobs {state['peak']} exceeds bounded window {bound} "
+        f"(2 * _DOWNLOAD_WORKERS)"
+    )
+    # All-or-nothing: the failed download is counted and never written.
+    assert result.skipped == 1
+    assert "c/skipped.jpg" not in result.written_paths
+    assert len(result.written_paths) == n_paths - 1
 
 
 # ─────────────────────────────────────────────────────────────────────
