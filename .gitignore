@@ -49,3 +49,6 @@ Documents/
 *.pdf
 *.docx
 *.pptx
+
+# Project seed folder for the separate Apify actor business (contains secrets.env; moves out of this repo)
+Apify_Actor/

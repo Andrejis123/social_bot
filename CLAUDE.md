@@ -51,9 +51,10 @@ VPS host + path live in the `deploy` recipe (justfile) and in memory
   `.venv` in `.claude/settings.json`, so the stale-`Claude_Social/.venv`
   warning is gone from new sessions.)
 - `just check` = ruff + mypy + pytest. Lint is green — keep it green.
-- Pre-commit hook runs `/security-review` + `/simplify` automatically. Never
+- Commits go through `/commit-session` (git-guard blocks raw `git commit`); its
+  `full` level runs `/code-review medium --fix` + `/security-review`. Never
   skip with `--no-verify`; fix the underlying issue instead.
-- **When a protocol calls for a skill (`/security-review`, `/simplify`,
+- **When a protocol calls for a skill (`/security-review`, `/code-review`,
   `/write-tests`), you MUST invoke the actual Skill tool** — the one that spawns
   its sub-agents. Never hand-write the analysis inline and present it as if the
   skill ran. Faking a skill step is a serious integrity failure, worse than the
