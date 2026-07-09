@@ -38,6 +38,7 @@ from pptx import Presentation
 
 from .. import drive
 from ..config import get_settings
+from ..db import queries
 from ..logging import get_logger
 from ..notifications import telegram
 from ..storage.reports import UploadedReport, upload_report
@@ -266,6 +267,22 @@ def publish_report(
         reuse_synthesis=reuse_synthesis,
     )
     uploaded = upload_report(client_slug, built.path)
+
+    # Record the successful report (best-effort): this row is what the
+    # report-gated archive cron checks before archiving the period. A
+    # recording failure must not break an otherwise-delivered report; the gap
+    # surfaces later as the archive gate skipping that client + alerting.
+    try:
+        queries.record_report_run(
+            client_slug=client_slug,
+            period_start=period.start.date(),
+            period_end=period.end.date(),
+            platform=platform,
+            slide_count=built.slide_count,
+            bytes_size=uploaded.bytes_size,
+        )
+    except Exception as exc:
+        log.warning("report.record_run_failed", client=client_slug, error=str(exc))
 
     # Drive upload is best-effort: failure must not break the existing
     # Supabase + Telegram path (which is what cron relies on for delivery).

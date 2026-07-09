@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 from ..config import get_settings
 from ..db.client import get_supabase
@@ -70,6 +72,29 @@ def compute_storage_breakdown() -> StorageBreakdown:
         by_kind[(client, kind)][1] += 1
     b.by_client_kind = dict(by_kind)
     return b
+
+
+def save_storage_snapshot(b: StorageBreakdown) -> int:
+    """Persist one storage_snapshots row per (client, kind) for trend analysis.
+
+    Called by the weekly cron (`data_health <interval> --save`). Returns rows
+    written.
+    """
+    if not b.by_client_kind:
+        return 0
+    captured_at = datetime.now(UTC).isoformat()
+    payload: list[dict[str, Any]] = [
+        {
+            "captured_at": captured_at,
+            "client": client,
+            "kind": kind,
+            "bytes": bytes_,
+            "files": files,
+        }
+        for (client, kind), (bytes_, files) in b.by_client_kind.items()
+    ]
+    get_supabase().table("storage_snapshots").insert(payload).execute()
+    return len(payload)
 
 
 def format_storage_breakdown(b: StorageBreakdown, *, cap_gb: float = 1.0) -> str:

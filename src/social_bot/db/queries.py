@@ -10,7 +10,7 @@ backlog, not license.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from functools import partial
 from itertools import batched
 from typing import Any
@@ -929,6 +929,60 @@ def list_all_tracked_storage_paths() -> set[str]:
     for table in ("media", "story_media"):
         paths.update(r["storage_path"] for r in fetch_all(partial(query, table)))
     return paths
+
+
+def record_report_run(
+    client_slug: str,
+    period_start: date,
+    period_end: date,
+    platform: str | None,
+    slide_count: int,
+    bytes_size: int,
+) -> None:
+    """Record a successfully published report for a client + period.
+
+    Presence of a row is the success signal the report-gated archive cron
+    checks (`has_report_run`) before it will bundle + stamp that period, so
+    media whose report never landed is never archived (and thus never purged).
+    """
+    sb = get_supabase()
+    sb.table("report_runs").insert(
+        {
+            "client_slug": client_slug,
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "platform": platform,
+            "slide_count": slide_count,
+            "bytes_size": bytes_size,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+    ).execute()
+    log.info(
+        "report_run.recorded",
+        client=client_slug,
+        period_start=period_start.isoformat(),
+        period_end=period_end.isoformat(),
+        platform=platform or "all",
+    )
+
+
+def has_report_run(client_slug: str, period_start: date, period_end: date) -> bool:
+    """True iff a successful report is recorded for exactly this client + window.
+
+    Platform is deliberately ignored: any successful report for the period
+    means the period was reported, which is all the archive gate needs.
+    """
+    sb = get_supabase()
+    res = (
+        sb.table("report_runs")
+        .select("client_slug")
+        .eq("client_slug", client_slug)
+        .eq("period_start", period_start.isoformat())
+        .eq("period_end", period_end.isoformat())
+        .limit(1)
+        .execute()
+    )
+    return bool(rows(res))
 
 
 def record_item_error(

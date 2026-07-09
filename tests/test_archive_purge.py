@@ -24,101 +24,11 @@ import scripts.make_content_bundle as mcb
 import scripts.restore_from_bundle as rfb
 from scripts.make_content_bundle import BundleResult
 from social_bot.db import queries
+from tests.fakes import FakeSupabase as _FakeSB
+from tests.fakes import patch_purge as _patch_purge
 
-# ─────────────────────────────────────────────────────────────────────
-# In-memory fake Supabase (subset of the query builder our code uses)
-# ─────────────────────────────────────────────────────────────────────
-
-
-class _Query:
-    def __init__(self, table_rows: list[dict]):
-        self._rows = table_rows
-        self._mode = "select"
-        self._values: dict = {}
-        self._filters: list = []  # (op, col, arg, negate)
-        self._negate_next = False
-        self._range: tuple[int, int] | None = None
-
-    # builders -------------------------------------------------------
-    def select(self, *_a, **_k):
-        self._mode = "select"
-        return self
-
-    def update(self, values, *_a, **_k):
-        self._mode = "update"
-        self._values = values
-        return self
-
-    def delete(self, *_a, **_k):
-        self._mode = "delete"
-        return self
-
-    def eq(self, col, val):
-        self._filters.append(("eq", col, val, False))
-        return self
-
-    def in_(self, col, vals):
-        self._filters.append(("in", col, list(vals), False))
-        return self
-
-    def lt(self, col, val):
-        self._filters.append(("lt", col, val, False))
-        return self
-
-    def is_(self, col, _val):  # only ever called with "null"
-        self._filters.append(("isnull", col, None, self._negate_next))
-        self._negate_next = False
-        return self
-
-    @property
-    def not_(self):
-        self._negate_next = True
-        return self
-
-    def range(self, start, stop):
-        self._range = (start, stop)
-        return self
-
-    # execution ------------------------------------------------------
-    def _match(self, row) -> bool:
-        for op, col, arg, negate in self._filters:
-            if op == "eq":
-                ok = row.get(col) == arg
-            elif op == "in":
-                ok = row.get(col) in arg
-            elif op == "lt":
-                v = row.get(col)
-                ok = v is not None and v < arg
-            elif op == "isnull":
-                ok = row.get(col) is None
-            else:  # pragma: no cover
-                raise AssertionError(op)
-            if negate:
-                ok = not ok
-            if not ok:
-                return False
-        return True
-
-    def execute(self):
-        matched = [r for r in self._rows if self._match(r)]
-        if self._mode == "update":
-            for r in matched:
-                r.update(self._values)
-        elif self._mode == "delete":
-            for r in matched:
-                self._rows.remove(r)
-        elif self._range is not None:  # pagination slice, selects only
-            start, stop = self._range
-            matched = matched[start : stop + 1]
-        return SimpleNamespace(data=[dict(r) for r in matched])
-
-
-class _FakeSB:
-    def __init__(self, tables: dict[str, list[dict]]):
-        self.tables = tables
-
-    def table(self, name):
-        return _Query(self.tables.setdefault(name, []))
+# In-memory fake Supabase: shared helper in tests/fakes.py (one copy of the
+# query-builder semantics for all test files).
 
 
 def _iso(dt: datetime) -> str:
@@ -396,25 +306,6 @@ def test_list_archived_purgeable_spans_both_tables(monkeypatch, now):
 # ─────────────────────────────────────────────────────────────────────
 # 4. purge command: dry-run vs --apply vs empty-set abort
 # ─────────────────────────────────────────────────────────────────────
-
-
-def _patch_purge(monkeypatch, candidates):
-    calls = {"removed": None, "tombstoned": None}
-    monkeypatch.setattr(
-        ap.queries, "list_archived_purgeable", lambda cutoff: list(candidates)
-    )
-
-    def fake_delete(paths):
-        calls["removed"] = list(paths)
-        return len(paths)
-
-    def fake_tombstone(paths):
-        calls["tombstoned"] = list(paths)
-        return len(paths)
-
-    monkeypatch.setattr(ap, "delete_from_storage", fake_delete)
-    monkeypatch.setattr(ap.queries, "tombstone_archived", fake_tombstone)
-    return calls
 
 
 def test_purge_dry_run_deletes_nothing(monkeypatch):

@@ -3,13 +3,62 @@ SHELL=/bin/bash
 # Scrape/describe crons removed 2026-07-02 (mothball — stopped periodic scraping; enough test data).
 # Backup of prior crontab: /opt/social-bot/crontab.backup.20260702-065044
 
-# ── Monthly reports — DISABLED 2026-07-02 (mothball, no fresh data to report). Uncomment to re-arm for a paying client. ──
-# Runs 1st of month 08:00 UTC. Period = last 30 days ending yesterday UTC.
-# 0  8  1 * *  docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/tmp_reports:/tmp/reports social-bot python -m scripts.run_monthly_reports $(date -u -d "30 days ago" +\%Y-\%m-\%d) $(date -u -d "yesterday" +\%Y-\%m-\%d) >> /var/log/social-bot.log 2>&1
+# ══════════════════════════════════════════════════════════════════════════
+# GO-LIVE BLOCK — the full unattended monthly cycle (report → archive →
+# purge → weekly health snapshots). ALL COMMENTED while mothballed
+# (scraping stopped 2026-07-02). To re-arm for a paying client: uncomment,
+# `just crontab-install`, and make sure migrations 0007+0008 are applied.
+#
+# Every line runs under deploy/cron_wrap.sh: if the wrapped docker run exits
+# non-zero — including exit 137 when the kernel OOM-kills the container,
+# which is otherwise completely silent — a Telegram alert fires with the job
+# name and exit code.
+#
+# Failure containment (why each stage can't hurt the next):
+#   report fails  → no report_runs row → archive --require-report skips that
+#                   client + alerts; nothing stamped, nothing ever purged.
+#   archive fails → nothing stamped (all-or-nothing) → purge sees no
+#                   candidates for that period; media stays in Supabase.
+#   purge         → only tombstones rows stamped archived >7 days ago;
+#                   --empty-ok keeps a quiet month from tripping the alert.
+#
+# Known limits (accepted for go-live, revisit if they start biting):
+#   * No auto-retry: a skipped/failed month is NOT retried by next month's
+#     cron (the window shifts). Recovery = manually rerun report then archive
+#     with the SAME dates from the alert (gate matches exact dates).
+#   * Gate is per-client, platform-blind: an IG report satisfies the gate for
+#     ALL of the client's platforms. Fine while operation is IG-only; extend
+#     report_runs gating per platform before re-enabling FB/TikTok.
+#   * Rolling 30-day windows fired monthly don't tile the calendar perfectly
+#     (a 31-day month leaves 1 unreported gap day). Matches the existing
+#     report convention; the gap media stays safely in Supabase.
+# ══════════════════════════════════════════════════════════════════════════
 
-# --- TEMP archive/purge test crons (added 2026-07-01, REMOVE after test) ---
-# Fired + removed 2026-07-07: agape archive (1 Jul), agape purge (2 Jul),
-# ecig E2E report + archive (4 Jul). ecig purge line (11 Jul) removed too:
-# re-archive on 5 Jul reset grace, so it would no-op; verify with a manual
-# purge --client ecig-monitoring --grace-days 7 --apply on/after 13 Jul.
-30 20 8 7 *  docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.archive_and_purge purge --client iluminatecz --grace-days 7 --apply >> /var/log/social-bot.log 2>&1
+# Monthly report — 1st 08:00 UTC. Period = last 30 days ending yesterday UTC.
+# 0  8  1 * *  /opt/social-bot/deploy/cron_wrap.sh monthly-report docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/tmp_reports:/tmp/reports social-bot python -m scripts.run_monthly_reports $(date -u -d "30 days ago" +\%Y-\%m-\%d) $(date -u -d "yesterday" +\%Y-\%m-\%d) >> /var/log/social-bot.log 2>&1
+
+# Monthly archive — 1st 12:00 UTC (4h after the report starts; synthesis for
+# all clients finishes well inside that). Same period expression as the
+# report so the report_runs gate matches exactly; only clients with a
+# recorded successful report are bundled + stamped.
+# 0 12  1 * *  /opt/social-bot/deploy/cron_wrap.sh monthly-archive docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.archive_and_purge archive $(date -u -d "30 days ago" +\%Y-\%m-\%d) $(date -u -d "yesterday" +\%Y-\%m-\%d) --require-report >> /var/log/social-bot.log 2>&1
+
+# Monthly purge — 9th 20:30 UTC (grace-7 from the 1st-of-month archive; the
+# 9th, not the 8th, so an archive that stamps late on the 1st still clears
+# grace with >30h margin instead of silently no-opping a whole month).
+# Tombstones only rows stamped archived >7 days ago; the Drive zip is the copy.
+# 30 20  9 * *  /opt/social-bot/deploy/cron_wrap.sh monthly-purge docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.archive_and_purge purge --grace-days 7 --apply --empty-ok >> /var/log/social-bot.log 2>&1
+
+# Weekly data-health snapshot — Mondays 05:00 UTC (before the Monday scrapes
+# so the 7d window covers the full prior scrape week). Persists
+# health_snapshots + storage_snapshots for trend analysis.
+# 0  5  * * 1  /opt/social-bot/deploy/cron_wrap.sh data-health docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.data_health 7d --save >> /var/log/social-bot.log 2>&1
+
+# Drive Live View sync — nightly 04:00 UTC (long-pending; parked here
+# commented so go-live picks it up with the rest; scope --client per client).
+# 0  4  * * *  /opt/social-bot/deploy/cron_wrap.sh drive-sync docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.sync_drive --client iluminatecz >> /var/log/social-bot.log 2>&1
+
+# --- TEMP archive/purge test crons ---
+# ALL fired + removed (last: iluminatecz purge, fired 8 Jul 2026 20:30).
+# ecig purge verify = MANUAL run on/after 13 Jul:
+#   purge --client ecig-monitoring --grace-days 7 --apply

@@ -27,6 +27,7 @@ window (the monthly cron uses 30-days-ago .. yesterday).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 import typer
 
@@ -46,6 +47,69 @@ log = get_logger(__name__)
 DEFAULT_GRACE_DAYS = 7
 
 
+def archive_client(slug: str, start_dt: datetime, end_dt: datetime) -> None:
+    """Archive one client's period: bundle, upload, verify, stamp.
+
+    Raises on any failure so the calling command can count it; the client's
+    media stays in Supabase untouched. NOTE: the monthly cron does NOT
+    auto-retry a failed period (next month computes a new window) — recovery
+    is a manual `archive` rerun with the SAME dates from the failure alert.
+    """
+    # DD-MM-YYYY: Telegram output is a user-visible surface (house convention).
+    period_label = (
+        f"{start_dt.strftime('%d-%m-%Y')} .. {end_dt.strftime('%d-%m-%Y')}"
+    )
+    bundle = build_bundle(slug, start_dt, end_dt)
+
+    # All-or-nothing: a period is either fully archived or not at all.
+    # Any file still missing after retries means a partial bundle, which
+    # we refuse to upload or stamp.
+    if bundle.skipped:
+        raise RuntimeError(
+            f"incomplete bundle: {bundle.skipped} file(s) failed to "
+            f"download after retries; aborting archive (no partial zip, "
+            f"nothing stamped, nothing purgeable)"
+        )
+    if not bundle.written_paths:
+        log.info("archive.empty", client=slug)
+        return
+
+    uploaded = drive.upload_bundle(slug, bundle.zip_path)
+    drive_id = uploaded["id"]
+
+    local_size = bundle.zip_path.stat().st_size
+    remote_size = drive.get_file_size(drive_id)
+    if remote_size != local_size:
+        # Upload truncated/corrupt — do NOT stamp; nothing becomes
+        # purgeable. Next month's run rebuilds and retries.
+        raise RuntimeError(
+            f"drive size mismatch local={local_size} remote={remote_size}"
+        )
+
+    stamped = queries.stamp_archived(bundle.written_paths, drive_id=drive_id)
+    size_mb = round(local_size / 1024 / 1024, 2)
+    summary = summarize_paths(bundle.written_paths)
+    log.info(
+        "archive.client_done",
+        client=slug,
+        drive_id=drive_id,
+        link=uploaded.get("webViewLink", ""),
+        written=len(bundle.written_paths),
+        stamped=stamped,
+        skipped=bundle.skipped,
+        posts=summary.total_posts,
+        stories=summary.total_stories,
+        size_mb=size_mb,
+    )
+    telegram.notify_archive_completed(
+        client_slug=slug,
+        period_label=period_label,
+        breakdown=render_summary(summary, verb="archived"),
+        size_mb=size_mb,
+        drive_link=uploaded.get("webViewLink", ""),
+    )
+
+
 @app.command()
 def archive(
     start: str = typer.Argument(..., help="Inclusive window start (YYYY-MM-DD)."),
@@ -53,6 +117,12 @@ def archive(
     clients: list[str] | None = typer.Argument(
         None, help="Client slugs (default: the cron's standard set)."
     ),
+    require_report: Annotated[bool, typer.Option(
+        "--require-report",
+        help="Only archive clients with a recorded successful report for this "
+             "exact window (report_runs). Used by the unattended cron so a "
+             "period whose report failed is never archived (and never purged).",
+    )] = False,
 ) -> None:
     """Bundle a period to Drive and stamp the verified-archived rows."""
     start_dt = datetime.fromisoformat(start).replace(tzinfo=UTC)
@@ -64,56 +134,15 @@ def archive(
 
     for slug in slugs:
         try:
-            bundle = build_bundle(slug, start_dt, end_dt)
-
-            # All-or-nothing: a period is either fully archived or not at all.
-            # Any file still missing after retries means a partial bundle, which
-            # we refuse to upload or stamp. The client's media stays in Supabase
-            # untouched and the period is retried next run.
-            if bundle.skipped:
+            if require_report and not queries.has_report_run(
+                slug, start_dt.date(), end_dt.date()
+            ):
                 raise RuntimeError(
-                    f"incomplete bundle: {bundle.skipped} file(s) failed to "
-                    f"download after retries; aborting archive (no partial zip, "
-                    f"nothing stamped, nothing purgeable)"
+                    f"no successful report recorded for {slug} "
+                    f"{start_dt.date()} .. {end_dt.date()}; archive skipped "
+                    f"(rerun the report, then archive)"
                 )
-            if not bundle.written_paths:
-                log.info("archive.empty", client=slug)
-                continue
-
-            uploaded = drive.upload_bundle(slug, bundle.zip_path)
-            drive_id = uploaded["id"]
-
-            local_size = bundle.zip_path.stat().st_size
-            remote_size = drive.get_file_size(drive_id)
-            if remote_size != local_size:
-                # Upload truncated/corrupt — do NOT stamp; nothing becomes
-                # purgeable. Next month's run rebuilds and retries.
-                raise RuntimeError(
-                    f"drive size mismatch local={local_size} remote={remote_size}"
-                )
-
-            stamped = queries.stamp_archived(bundle.written_paths, drive_id=drive_id)
-            size_mb = round(local_size / 1024 / 1024, 2)
-            summary = summarize_paths(bundle.written_paths)
-            log.info(
-                "archive.client_done",
-                client=slug,
-                drive_id=drive_id,
-                link=uploaded.get("webViewLink", ""),
-                written=len(bundle.written_paths),
-                stamped=stamped,
-                skipped=bundle.skipped,
-                posts=summary.total_posts,
-                stories=summary.total_stories,
-                size_mb=size_mb,
-            )
-            telegram.notify_archive_completed(
-                client_slug=slug,
-                period_label=f"{start} .. {end}",
-                breakdown=render_summary(summary, verb="archived"),
-                size_mb=size_mb,
-                drive_link=uploaded.get("webViewLink", ""),
-            )
+            archive_client(slug, start_dt, end_dt)
         except Exception as exc:
             log.error("archive.client_failed", client=slug, error=str(exc))
             telegram.notify_archive_failed(client_slug=slug, error=str(exc))
@@ -137,6 +166,11 @@ def purge(
         False, "--apply",
         help="Execute deletions. Without this flag the run is a dry-run preview.",
     ),
+    empty_ok: Annotated[bool, typer.Option(
+        "--empty-ok",
+        help="Exit cleanly when nothing is purgeable (for the recurring cron; "
+             "a quiet month must not trip the failure alert).",
+    )] = False,
 ) -> None:
     """Tombstone archived, grace-expired media (storage delete + NULL path)."""
     cutoff = datetime.now(UTC) - timedelta(days=grace_days)
@@ -167,6 +201,10 @@ def purge(
         return
 
     if not paths:
+        if empty_ok:
+            log.info("purge.empty_ok")
+            typer.echo("Nothing to purge: no archived files past grace.")
+            return
         raise SystemExit("purge --apply: no purgeable candidates; aborting.")
 
     client_label = client or "all clients"

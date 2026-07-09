@@ -97,14 +97,11 @@ cron-purge grace="7":
 # Migrations & checks
 # ---------------------------------------------------------------------------
 
-# Print all migration SQL (paste into Supabase SQL editor).
+# Print all migration SQL in order (paste into Supabase SQL editor).
+# Zero-padded filenames sort in application order; new migrations are
+# picked up automatically.
 print-migration:
-    @cat migrations/0001_initial_schema.sql
-    @cat migrations/0002_add_ai_description.sql
-    @cat migrations/0003_add_stories_ai.sql
-    @cat migrations/0004_synthesis_artifacts.sql
-    @cat migrations/0005_drive_sync.sql
-    @cat migrations/0006_archive_ledger.sql
+    @cat migrations/*.sql
 
 # Lint + type check + tests.
 check:

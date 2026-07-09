@@ -4,7 +4,7 @@ Data health reporting: per-account scraping volume and AI pass rates.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -120,6 +120,34 @@ def compute_health(interval: str) -> tuple[list[AccountHealth], datetime, dateti
 
     results.sort(key=lambda r: r.handle)
     return results, start, end
+
+
+def save_health_snapshots(
+    health_rows: list[AccountHealth], interval: str, start: datetime, end: datetime,
+) -> int:
+    """Persist one health_snapshots row per account for trend analysis.
+
+    Called by the weekly cron (`data_health <interval> --save`); the printed
+    report stays the source for humans, this table is the source for history
+    (scrape-cadence tuning, error-pattern drift). Returns rows written.
+    """
+    if not health_rows:
+        return 0
+    sb = get_supabase()
+    captured_at = datetime.now(UTC).isoformat()
+    payload = [
+        {
+            "captured_at": captured_at,
+            "interval": interval,
+            "period_start": start.isoformat(),
+            "period_end": end.isoformat(),
+            **asdict(row),
+        }
+        for row in health_rows
+    ]
+    sb.table("health_snapshots").insert(payload).execute()
+    log.info("health.snapshots_saved", count=len(payload), interval=interval)
+    return len(payload)
 
 
 def _pct(num: int, denom: int) -> str:
