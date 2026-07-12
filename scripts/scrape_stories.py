@@ -15,10 +15,11 @@ log = get_logger(__name__)
 def main(
     client: str = typer.Option(..., "--client", "-c", help="Client slug (folder name)."),
     account: str | None = typer.Option(None, "--account", "-a", help="Only process this account handle (default: all accounts)."),
+    platform: str | None = typer.Option(None, "--platform", "-p", help="Only process accounts on this platform (e.g. instagram, tiktok)."),
 ) -> None:
     setup_logging()
-    log.info("cli.scrape_stories.start", client=client, account=account)
-    run_ids = ingest_stories_for_client(client, account_handle=account)
+    log.info("cli.scrape_stories.start", client=client, account=account, platform=platform)
+    run_ids = ingest_stories_for_client(client, account_handle=account, platform=platform)
     log.info("cli.scrape_stories.done", runs=run_ids)
 
 

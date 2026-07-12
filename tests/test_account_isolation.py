@@ -243,3 +243,22 @@ def test_ambiguous_account_handle_without_platform_raises(monkeypatch):
         ingest_posts_for_client("testclient", account_handle="dup")
     # Nothing must have been scraped for either platform.
     assert len(rec["start_run"]) == 0
+
+
+def test_stories_ambiguous_account_handle_raises(monkeypatch):
+    # Mirror of the posts guard: with the stories gate covering more than one
+    # platform (instagram + tiktok), --account on a dual-platform handle must
+    # fail loudly instead of silently running both scrapers.
+    from social_bot.pipeline.ingest_stories import ingest_stories_for_client
+
+    ig = SimpleNamespace(platform="instagram", handle="dup", is_owned=True)
+    tt = SimpleNamespace(platform="tiktok", handle="dup", is_owned=True)
+    rec = _patch_stories(monkeypatch, accounts=[ig, tt])
+
+    with pytest.raises(ValueError, match="dup"):
+        ingest_stories_for_client("testclient", account_handle="dup")
+    assert len(rec["start_run"]) == 0
+
+    # Disambiguated by platform= it runs exactly one account.
+    ingest_stories_for_client("testclient", account_handle="dup", platform="tiktok")
+    assert len(rec["start_run"]) == 1

@@ -24,13 +24,18 @@ from .run_context import RunContext
 
 log = get_logger(__name__)
 
+# Platforms with a working stories scraper tier.
+STORY_PLATFORMS = {"instagram", "tiktok"}
+
 
 def ingest_stories_for_client(
     slug: str,
     *,
     account_handle: str | None = None,
+    platform: str | None = None,
 ) -> list[str]:
-    """If account_handle is set, only that account is processed."""
+    """If account_handle is set, only that account is processed. If platform
+    is set, only accounts on that platform are processed."""
     loaded = load_client(slug)
     client_id = queries.upsert_client(loaded.slug, loaded.name)
 
@@ -40,11 +45,25 @@ def ingest_stories_for_client(
     else:
         accounts = loaded.active_accounts
 
+    if platform:
+        accounts = [a for a in accounts if a.platform == platform]
+
+    # Same guard as ingest_posts: a handle can exist on more than one story
+    # platform (instagram AND tiktok). Targeting it without --platform would
+    # silently run both scrapers — fail loudly instead.
+    story_accounts = [a for a in accounts if a.platform in STORY_PLATFORMS]
+    if account_handle and len({a.platform for a in story_accounts}) > 1:
+        platforms = sorted(a.platform for a in story_accounts)
+        raise ValueError(
+            f"account handle {account_handle!r} exists on multiple platforms "
+            f"{platforms}; pass platform= (--platform) to disambiguate"
+        )
+
     run_ids: list[str] = []
     for account in accounts:
-        # Stories are Instagram-only for now; Facebook stories are deferred
-        # (Phase B — weak/expensive tooling, needs an authenticated session).
-        if account.platform != "instagram":
+        # Facebook stories are deferred (Phase B — weak/expensive tooling,
+        # needs an authenticated session).
+        if account.platform not in STORY_PLATFORMS:
             continue
         run_ids.append(
             _ingest_one_account(loaded=loaded, account=account, client_id=client_id)

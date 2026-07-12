@@ -9,10 +9,12 @@ from __future__ import annotations
 from .base import Scraper
 from .facebook import FacebookScraper
 from .instagram import InstagramScraper
+from .tiktok import TikTokScraper
 
 _REGISTRY: dict[str, type[Scraper]] = {
     "instagram": InstagramScraper,
     "facebook": FacebookScraper,
+    "tiktok": TikTokScraper,
 }
 
 

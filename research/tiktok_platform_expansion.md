@@ -145,6 +145,36 @@ The codebase is already platform-agnostic. Account identity is the `(platform, h
 
 ---
 
+## 8. Build log — Phase 0 dry-runs + Phase 1 adapter (2026-07-09)
+
+Phase 0 verified with real actor runs (~$0.15 total) and Phase 1 shipped the same day.
+
+- **Pricing changed since §4**: `clockworks/tiktok-profile-scraper` is now **PAY_PER_EVENT**,
+  not price-per-result. Free tier: $0.003/result + add-ons per result (date filter $0.0013,
+  video download $0.0013/video, transcription $0.048/min). Cheaper than the researched $0.005 flat.
+  Stories actor `igview-owner/tiktok-story-viewer`: $0.02/story + $0.02/actor start.
+- **Dedup confirmed**: `id` is a stable numeric string (e.g. `7584761154879245590`) — matches
+  our numeric-pk `platform_post_id` convention. Author id lives at `authorMeta.id`.
+- **Media requires the video-download add-on**: without `shouldDownloadVideos: true`,
+  `mediaUrls` is EMPTY (no free CDN video URL in the dataset; `originalCoverUrl` is a signed
+  TikTok CDN URL that expires). With the add-on, mp4 + cover land in a **public-read Apify
+  key-value store that expires in ~7 days** — download-at-scrape-time into Supabase is
+  mandatory (same pattern as IG reel covers).
+- **Stories actor emits sentinel items** (`status: "no_stories"`) alongside real stories —
+  the adapter filters anything with a `status` field or no `video_id`/`aweme_id`. Real story
+  shape captured from @espn: `video_id` (numeric), `create_time` epoch, expiring CDN
+  `video_url`, cover URLs, `duration`.
+- **Adapter shipped**: `src/social_bot/scrapers/tiktok.py` (Apify-only tier; module-level
+  normalizers ready for a future EnsembleData primary), registered in registry.py, settings
+  `APIFY_TIKTOK_ACTOR`/`APIFY_TIKTOK_STORY_ACTOR`. 16 tests from real captured fixtures.
+  Live-verified same day (redbull posts: video+cover media, full metrics; espn story:
+  expiry = posted+24h). `ingest_stories` platform gate widened to `STORY_PLATFORMS =
+  {"instagram", "tiktok"}`; renderer `PLATFORM_LABELS` got `tiktok`.
+- **Still open before go-live**: real slideshow (Photo Mode) capture — no slideshow post in
+  any dry-run sample, so the carousel path is tested only against a constructed fixture.
+  Also: end-to-end ingest→describe→report run on a TikTok account, and per-platform
+  report-gate note from the Phase 2/3 automation still applies (gate is platform-blind).
+
 ## Sources (from completed scraping/policy research)
 
 - TikTok Research API Video Specs / Eligibility / FAQ — developers.tiktok.com (official)

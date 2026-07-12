@@ -8,7 +8,7 @@ platform-agnostic. Adding a new platform means implementing this protocol.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 # Sentinel slide index for the cover thumbnail paired with a video/reel.
@@ -33,6 +33,27 @@ def dedupe_reel_cover(media: list[ScrapedMedia]) -> list[ScrapedMedia]:
             seen_cover = True
         out.append(m)
     return out
+
+
+def parse_ts(value: Any) -> datetime | None:
+    """ISO-8601 string (with Z) or Unix epoch seconds -> tz-aware UTC datetime.
+
+    Shared by platform normalizers. Defensive on garbage: unparseable strings,
+    bools, and out-of-range epochs (e.g. millisecond timestamps) return None
+    rather than raising — a bad timestamp must not drop the whole item."""
+    if not value or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(value, tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+    return None
 
 
 @dataclass(slots=True)

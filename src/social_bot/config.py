@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     apify_facebook_actor: str = Field(
         "apify/facebook-posts-scraper", alias="APIFY_FACEBOOK_ACTOR"
     )
+    # TikTok posts: anonymous actor with the video/cover download add-on (media
+    # URLs point at Apify key-value-store copies, so no stale-CDN chasing).
+    apify_tiktok_actor: str = Field(
+        "clockworks/tiktok-profile-scraper", alias="APIFY_TIKTOK_ACTOR"
+    )
+    apify_tiktok_story_actor: str = Field(
+        "igview-owner/tiktok-story-viewer", alias="APIFY_TIKTOK_STORY_ACTOR"
+    )
     instagram_cookies: str | None = Field(None, alias="INSTAGRAM_COOKIES")
     instagram_cookie_country: str = Field("SK", alias="INSTAGRAM_COOKIE_COUNTRY")
     instagram_cookies_backup: str | None = Field(None, alias="INSTAGRAM_COOKIES_BACKUP")

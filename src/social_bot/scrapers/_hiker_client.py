@@ -99,30 +99,41 @@ class HikerClient:
             uid, limit=limit, since_dt=since_dt, until_dt=until_dt
         )
 
-    def fetch_user_stories(self, *, user_id: str) -> list[dict[str, Any]]:
-        """Fetch active story items for an Instagram account by its `pk`.
+    def fetch_stories_by_username(
+        self, username: str
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Fetch an account's active stories in ONE call (live-verified
+        09-07-2026): `/v2/user/stories/by/username` returns both the account
+        dict (reel.user) and the story items, replacing the old
+        lookup + stories-by-id pair and halving per-target cost.
 
-        Hits `/v2/user/stories/by/id` (the namespace the HikerAPI dashboard
-        actually meters us on — `/v2/user/stories`). Returns raw story dicts
-        in v2 (instagrapi-v2) shape. Empty list = no active stories (NOT an
-        error). Caller is responsible for supplying `user_id`.
+        Returns (account, items), both raw v2 (instagrapi-v2) shapes.
+        `reel == null` means zero active stories: SUCCESS, ({}, []).
+        HikerAPI intermittently 404s valid accounts, so retries once on 404
+        before treating it as fatal.
+
+        Raises:
+            HikerFatal: username not found after retry, key invalid, or 4xx
+            HikerTransient: 5xx, network, or timeout after one retry
         """
+        h = _clean_handle(username)
         data = self._get(
-            "/v2/user/stories", params={"user_id": user_id}, retry_on_404=True
+            "/v2/user/stories/by/username", params={"username": h}, retry_on_404=True
         )
-        # v2 shape:
-        #   {"broadcast": ..., "reel": {"items": [...], ...} | null, "status": "ok"}
-        # `reel == null` means no active stories — return empty list.
-        if isinstance(data, dict):
-            reel = data.get("reel")
-            if isinstance(reel, dict):
-                items = reel.get("items")
-                if isinstance(items, list):
-                    return items
-        return []
+        # v2 shape: {"broadcast": ..., "reel": {"user": {...}, "items": [...]} | null,
+        # "status": "ok"}. reel null == no active stories, a successful scrape.
+        reel = data.get("reel") if isinstance(data, dict) else None
+        if not isinstance(reel, dict):
+            return {}, []
+        user = reel.get("user")
+        items = reel.get("items")
+        return (
+            user if isinstance(user, dict) else {},
+            items if isinstance(items, list) else [],
+        )
 
     def lookup_user_id(self, handle: str, *, retry_on_404: bool = False) -> str:
-        h = handle.lstrip("@")
+        h = _clean_handle(handle)
         data = self._get(
             "/v2/user/by/username", params={"username": h}, retry_on_404=retry_on_404
         )
@@ -249,6 +260,12 @@ class HikerClient:
             raise HikerFatal(f"unexpected status {status}: {r.text[:200]}")
 
         raise HikerTransient("retry loop exited unexpectedly")
+
+
+def _clean_handle(handle: str) -> str:
+    """One normalization for both endpoints — whitespace first, then the `@`
+    (the reverse order leaves the `@` in place on padded handles)."""
+    return handle.strip().lstrip("@")
 
 
 def _ts_to_datetime(ts: Any) -> datetime | None:

@@ -97,6 +97,7 @@ class _BuiltReport:
 PLATFORM_LABELS = {
     "instagram": "Instagram",
     "facebook": "Facebook",
+    "tiktok": "TikTok",
 }
 
 

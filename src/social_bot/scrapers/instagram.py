@@ -16,14 +16,17 @@ defensively: every field read goes through `.get(...)` and we lean on the
 `raw` dict to preserve anything we didn't map yet.
 
 Stories scraping mirrors the post tiering:
-  1. HikerAPI `/v1/user/stories/by/id` (when configured). Auth-first, so
-     restricted-but-public accounts work.
+  1. HikerAPI `/v2/user/stories/by/username` (when configured). Auth-first,
+     so restricted-but-public accounts work. ONE call returns both the
+     account dict (reel.user) and the story items — no separate username→pk
+     lookup. The pk from reel.user is cached via
+     `discovered_platform_account_id`; only the first-ever scrape of a
+     storyless account (reel null, no cached pk) spends one lookup call.
   2. `igview-owner/instagram-story-viewer` Apify actor — anonymous, public-
      only. Fallthrough on hiker error.
 
-When the caller passes a cached `platform_account_id` (the IG `pk`), we
-skip the per-run username→pk lookup, halving HikerAPI request cost on
-the stories cron.
+For posts, a cached `platform_account_id` (the IG `pk`) still skips the
+per-run username→pk lookup.
 """
 
 from __future__ import annotations
@@ -42,6 +45,7 @@ from .base import (
     ScrapedPost,
     ScrapedStory,
     dedupe_reel_cover,
+    parse_ts,
 )
 
 log = get_logger(__name__)
@@ -396,6 +400,10 @@ class InstagramScraper:
 
         Empty list = no active stories right now (NOT an error). Hiker
         errors fall through to Apify; a clean empty hiker response does not.
+
+        Known tradeoff of the single-call by-username endpoint: unlike the
+        posts path (pk-based), a handle RENAME breaks the stories fetch until
+        the config/DB handle is updated — the cached pk cannot be used here.
         """
         self.discovered_platform_account_id = platform_account_id
 
@@ -421,16 +429,32 @@ class InstagramScraper:
     ) -> list[ScrapedStory]:
         assert self._hiker is not None
         cached = user_id is not None
-        if not user_id:
-            # HikerAPI intermittently 404s UserNotFound for valid accounts; retry
-            # once here so the stories cron doesn't fall through to paid Apify on
-            # a transient miss.
-            user_id = self._hiker.lookup_user_id(handle, retry_on_404=True)
-        self.discovered_platform_account_id = user_id
 
         log.info("hiker.stories.start", handle=handle, cached_user_id=cached)
-        raw_items = self._hiker.fetch_user_stories(user_id=user_id)
+        user, raw_items = self._hiker.fetch_stories_by_username(handle)
         log.info("hiker.stories.finished", handle=handle, items=len(raw_items))
+
+        pk = user.get("pk") or user.get("id")
+        if pk:
+            # Cache the pk from reel.user so the pipeline persists it — no
+            # separate paid lookup needed when the account has active stories.
+            self.discovered_platform_account_id = str(pk)
+        elif not cached:
+            # reel was null (no active stories) AND we have never resolved this
+            # account's pk. Spend ONE lookup to seed the cache; future runs are
+            # then a single stories call regardless of story activity. HikerAPI
+            # intermittently 404s valid accounts, hence retry_on_404. Best-effort:
+            # the stories fetch already SUCCEEDED, so a seed failure must not
+            # escape — it would discard the valid empty result and trigger a
+            # paid Apify fallthrough for an account known to have no stories.
+            try:
+                self.discovered_platform_account_id = self._hiker.lookup_user_id(
+                    handle, retry_on_404=True
+                )
+            except (HikerTransient, HikerFatal) as exc:
+                log.warning(
+                    "hiker.stories.pk_seed_failed", handle=handle, error=str(exc)
+                )
 
         stories: list[ScrapedStory] = []
         for raw in raw_items:
@@ -482,19 +506,9 @@ def _profile_url(handle: str) -> str:
 
 
 
-def _parse_ts(value: Any) -> datetime | None:
-    if not value:
-        return None
-    # Apify typically returns ISO-8601 strings.
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    if isinstance(value, (int, float)):
-        # Unix seconds.
-        return datetime.fromtimestamp(value, tz=UTC)
-    return None
+# Shared guarded parser (base.py) — the old local copy raised on
+# out-of-range epochs (e.g. millisecond timestamps), dropping the whole item.
+_parse_ts = parse_ts
 
 
 def _determine_post_type(raw: dict[str, Any]) -> str:
