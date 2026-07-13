@@ -45,16 +45,22 @@ _DOWNLOAD_WORKERS = 4
 class BundleResult:
     """Outcome of building a bundle zip.
 
-    `written_paths` is the set of Supabase storage paths whose bytes were
-    ACTUALLY written into the zip — it excludes any download that failed
-    (`skipped`). The archive step stamps/purges only these paths, so a media
-    file that never entered the archive is never eligible for deletion.
+    `written_items` records the files whose bytes were ACTUALLY written into
+    the zip — one (kind, item_id, path) tuple per file, kind "post"/"story"
+    with the parent id from the media row's column, excluding any download
+    that failed (`skipped`). The archive step stamps/purges only these paths,
+    so a media file that never entered the archive is never eligible for
+    deletion; the summary counts items from the ids, never by parsing paths.
     """
 
     zip_path: Path
-    written_paths: list[str]
+    written_items: list[tuple[str, str, str]]
     skipped: int
     total_bytes: int
+
+    @property
+    def written_paths(self) -> list[str]:
+        return [path for _, _, path in self.written_items]
 
 
 def _zip_arcname(storage_path: str) -> str:
@@ -101,11 +107,12 @@ def build_bundle(client_slug: str, start: datetime, end: datetime) -> BundleResu
     story_media = queries.list_story_media_for_stories([s["id"] for s in stories])
     log.info("bundle.media_rows", post_media=len(media), story_media=len(story_media))
 
-    rows = media + story_media
-    paths = [row["storage_path"] for row in rows]
+    items = [("post", row["post_id"], row["storage_path"]) for row in media] + [
+        ("story", row["story_id"], row["storage_path"]) for row in story_media
+    ]
 
     total_bytes = 0
-    written_paths: list[str] = []
+    written_items: list[tuple[str, str, str]] = []
     skipped = 0
     # Stream downloads through a bounded window instead of buffering the whole
     # period in one list: a large client (hundreds of story mp4s) otherwise
@@ -114,41 +121,41 @@ def build_bundle(client_slug: str, start: datetime, end: datetime) -> BundleResu
     # the zip and dropped before the window advances, so peak memory is
     # window x max-file, not the whole period. Writing before submitting the
     # next task holds outstanding-but-unwritten blobs at <= window. Submission
-    # order (== `paths` order) is preserved, so the zip layout is deterministic.
+    # order (== `items` order) is preserved, so the zip layout is deterministic.
     window = 2 * _DOWNLOAD_WORKERS
     with (
         zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf,
         ThreadPoolExecutor(max_workers=_DOWNLOAD_WORKERS) as ex,
     ):
-        path_iter = iter(paths)
-        inflight: deque[tuple[str, Future[bytes | None]]] = deque(
-            (p, ex.submit(_safe_download, p)) for p in islice(path_iter, window)
+        item_iter = iter(items)
+        inflight: deque[tuple[tuple[str, str, str], Future[bytes | None]]] = deque(
+            (it, ex.submit(_safe_download, it[2])) for it in islice(item_iter, window)
         )
         while inflight:
-            path, fut = inflight.popleft()
+            item, fut = inflight.popleft()
             blob = fut.result()
             if blob is None:
                 skipped += 1
             else:
-                zf.writestr(_zip_arcname(path), blob)
-                written_paths.append(path)
+                zf.writestr(_zip_arcname(item[2]), blob)
+                written_items.append(item)
                 total_bytes += len(blob)
                 del blob  # drop before advancing the window
-            nxt = next(path_iter, None)
+            nxt = next(item_iter, None)
             if nxt is not None:
-                inflight.append((nxt, ex.submit(_safe_download, nxt)))
+                inflight.append((nxt, ex.submit(_safe_download, nxt[2])))
 
     log.info(
         "bundle.zip_finished",
         path=str(out_path),
-        files=len(written_paths),
+        files=len(written_items),
         skipped=skipped,
         bytes=total_bytes,
         size_mb=round(total_bytes / 1024 / 1024, 2),
     )
     return BundleResult(
         zip_path=out_path,
-        written_paths=written_paths,
+        written_items=written_items,
         skipped=skipped,
         total_bytes=total_bytes,
     )

@@ -37,7 +37,7 @@ from social_bot.db import queries
 from social_bot.logging import get_logger
 from social_bot.notifications import telegram
 from social_bot.storage.media import delete_from_storage
-from social_bot.storage.summary import render_summary, summarize_paths
+from social_bot.storage.summary import render_summary, summarize_items
 
 from .make_content_bundle import build_bundle
 
@@ -88,7 +88,7 @@ def archive_client(slug: str, start_dt: datetime, end_dt: datetime) -> None:
 
     stamped = queries.stamp_archived(bundle.written_paths, drive_id=drive_id)
     size_mb = round(local_size / 1024 / 1024, 2)
-    summary = summarize_paths(bundle.written_paths)
+    summary = summarize_items(bundle.written_items)
     log.info(
         "archive.client_done",
         client=slug,
@@ -225,7 +225,9 @@ def purge(
         telegram.notify_purge_failed(client_label=client_label, error=str(exc))
         raise
 
-    summary = summarize_paths(paths)
+    summary = summarize_items(
+        (c["kind"], c["item_id"], c["storage_path"]) for c in candidates
+    )
     log.info(
         "purge.done",
         removed=removed,

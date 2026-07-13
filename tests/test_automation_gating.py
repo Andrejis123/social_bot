@@ -33,13 +33,13 @@ from typer.testing import CliRunner
 
 import scripts.archive_and_purge as ap
 from scripts.archive_and_purge import archive_client
-from scripts.make_content_bundle import BundleResult
 from social_bot.db import queries
 from social_bot.db.queries import has_report_run, record_report_run
 from social_bot.reports import renderer
 from social_bot.reports.data import Period
 from social_bot.storage.reports import UploadedReport
 from tests.fakes import FakeSupabase as _FakeSB
+from tests.fakes import make_bundle as _bundle
 from tests.fakes import patch_purge as _patch_purge
 
 # ─────────────────────────────────────────────────────────────────────
@@ -296,12 +296,6 @@ def test_publish_report_recording_failure_is_swallowed(monkeypatch, tmp_path):
 # ─────────────────────────────────────────────────────────────────────
 
 
-def _bundle(tmp_path, written, skipped) -> BundleResult:
-    zp = tmp_path / "b.zip"
-    zp.write_bytes(b"x" * 100)
-    return BundleResult(
-        zip_path=zp, written_paths=list(written), skipped=skipped, total_bytes=100
-    )
 
 
 _START_DT = datetime(2026, 5, 1, tzinfo=UTC)
@@ -447,8 +441,10 @@ def test_purge_apply_empty_without_flag_still_aborts(monkeypatch):
 
 def test_purge_apply_empty_ok_with_candidates_unchanged(monkeypatch):
     candidates = [
-        {"id": "A", "storage_path": "c/a.jpg", "table": "media"},
-        {"id": "S", "storage_path": "c/s.mp4", "table": "story_media"},
+        {"id": "A", "kind": "post", "item_id": "P1",
+         "storage_path": "c/a.jpg", "table": "media"},
+        {"id": "S", "kind": "story", "item_id": "S1",
+         "storage_path": "c/s.mp4", "table": "story_media"},
     ]
     calls = _patch_purge(monkeypatch, candidates)
     monkeypatch.setattr(ap, "telegram", MagicMock())

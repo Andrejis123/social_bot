@@ -723,6 +723,12 @@ def clear_story_media_drive(story_media_id: str) -> None:
 # =========================
 
 _ARCHIVE_TABLES = ("media", "story_media")
+# Per-table item semantics (summary kind, parent-id column) — the single source
+# for item-aware summaries. Extend together with _ARCHIVE_TABLES.
+_ARCHIVE_TABLE_ITEMS = {
+    "media": ("post", "post_id"),
+    "story_media": ("story", "story_id"),
+}
 
 
 def _update_archived_paths(
@@ -767,13 +773,17 @@ def list_archived_purgeable(cutoff: datetime) -> list[dict[str, Any]]:
     archived_at < cutoff (grace elapsed) AND storage_path IS NOT NULL (bytes
     still present). Only these are eligible to tombstone. Media never archived,
     or archived inside the grace window, is invisible here by construction.
+
+    Each candidate carries normalized ``kind`` + ``item_id`` (media.post_id /
+    story_media.story_id) so summaries count items from columns, not paths.
     """
     sb = get_supabase()
 
     def query(table: str) -> Any:
+        _, id_col = _ARCHIVE_TABLE_ITEMS[table]
         return (
             sb.table(table)
-            .select("id, storage_path, archive_drive_id")
+            .select(f"id, {id_col}, storage_path, archive_drive_id")
             .lt("archived_at", cutoff.isoformat())
             .not_.is_("archived_at", "null")
             .not_.is_("storage_path", "null")
@@ -781,8 +791,9 @@ def list_archived_purgeable(cutoff: datetime) -> list[dict[str, Any]]:
 
     out: list[dict[str, Any]] = []
     for table in _ARCHIVE_TABLES:
+        kind, id_col = _ARCHIVE_TABLE_ITEMS[table]
         for r in fetch_all(partial(query, table)):
-            out.append({**r, "table": table})
+            out.append({**r, "table": table, "kind": kind, "item_id": r[id_col]})
     return out
 
 

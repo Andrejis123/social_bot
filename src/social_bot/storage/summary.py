@@ -1,15 +1,17 @@
 """
-Summarise a set of storage paths by account, splitting files from items.
+Summarise archived/purged media by account, splitting files from items.
 
-Archive and purge both operate on lists of object paths, but a raw file count
-is hard to reconcile against a report: a single carousel post or reel is several
-files (slides + cover), and a story is one file. This turns a flat path list
-into a per-account breakdown of distinct posts, distinct stories, and total
-files, so a purge/archive summary lines up with the report's per-account counts.
+Archive and purge both operate on lists of storage objects, but a raw file
+count is hard to reconcile against a report: a single carousel post or reel is
+several files (slides + cover), and a story is one file. This turns a flat list
+of (kind, item_id, path) entries into a per-account breakdown of distinct
+posts, distinct stories, and total files, so a purge/archive summary lines up
+with the report's per-account counts.
 
-Path schemes (see storage/media.py and pipeline/ingest_stories.py):
-    {client}/{handle}/{platform}/posts/{YYYY}/{MM}/{post_id}/{slide}.{ext}
-    {client}/{handle}/{platform}/stories/{YYYY}/{MM}/{DD}/{story_id}.{ext}
+Item identity (kind + item_id) comes from DB columns (media.post_id /
+story_media.story_id) — never parsed out of the path, so item counts are
+immune to path-scheme changes. Only the account grouping is path-derived
+({client}/{handle}/... prefix), because handle lives nowhere on the media rows.
 """
 
 from __future__ import annotations
@@ -48,31 +50,38 @@ class StorageSummary:
         return self.total_posts + self.total_stories
 
 
-def summarize_paths(paths: Iterable[str]) -> StorageSummary:
-    """Group storage paths into a per-account posts/stories/files breakdown.
+def summarize_items(items: Iterable[tuple[str, str | None, str]]) -> StorageSummary:
+    """Group (kind, item_id, storage_path) entries into a per-account breakdown.
 
-    Every path counts toward a file total. Paths whose shape we recognise also
-    contribute their distinct parent item (post_id or story_id). Unrecognised
-    shapes are still counted as files (so the file total always matches the
-    number of objects purged) but add no item.
+    ``kind`` is "post" or "story"; ``item_id`` is the parent post_id/story_id
+    straight from the media row (None contributes no item). Every entry counts
+    toward a file total, so the file total always matches the number of objects
+    archived/purged. Paths too short to carry a {client}/{handle}/ prefix are
+    counted as unclassified files and add no item.
     """
     summary = StorageSummary()
-    for path in paths:
+    for kind, item_id, path in items:
         parts = path.split("/")
-        # Minimum recognised shape: client/handle/platform/kind/.../item
-        if len(parts) < 8:
+        # 4 = the shortest shape where parts[0]/parts[1] can plausibly be a
+        # {client}/{handle}/ prefix with content below it. All real writers
+        # produce 8-segment paths; shorter ones only occur on legacy or
+        # hand-inserted rows, where a wrong account line beats losing the file
+        # from the totals.
+        if len(parts) < 4:
             summary.unclassified_files += 1
             continue
-        client, handle, _platform, kind = parts[0], parts[1], parts[2], parts[3]
+        client, handle = parts[0], parts[1]
         acct = summary.accounts.get((client, handle))
         if acct is None:
             acct = AccountBreakdown(handle=handle)
             summary.accounts[(client, handle)] = acct
         acct.files += 1
-        if kind == "posts":
-            acct.posts.add(parts[6])  # {post_id}
-        elif kind == "stories":
-            acct.stories.add(parts[-1].rsplit(".", 1)[0])  # {story_id}
+        if item_id is None:
+            continue
+        if kind == "post":
+            acct.posts.add(item_id)
+        elif kind == "story":
+            acct.stories.add(item_id)
     return summary
 
 

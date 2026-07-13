@@ -25,6 +25,7 @@ import scripts.restore_from_bundle as rfb
 from scripts.make_content_bundle import BundleResult
 from social_bot.db import queries
 from tests.fakes import FakeSupabase as _FakeSB
+from tests.fakes import make_bundle as _bundle
 from tests.fakes import patch_purge as _patch_purge
 
 # In-memory fake Supabase: shared helper in tests/fakes.py (one copy of the
@@ -57,7 +58,7 @@ def _patch_bundle_queries(monkeypatch, tmp_path, media_paths):
     monkeypatch.setattr(
         mcb.queries,
         "list_media_for_posts",
-        lambda ids: [{"storage_path": p} for p in media_paths],
+        lambda ids: [{"storage_path": p, "post_id": "post-1"} for p in media_paths],
     )
     monkeypatch.setattr(mcb.queries, "list_story_media_for_stories", lambda ids: [])
     return (
@@ -269,13 +270,13 @@ def test_list_archived_purgeable_selects_only_eligible(monkeypatch, now):
     old = _iso(now - timedelta(days=30))      # archived long ago
     recent = _iso(now - timedelta(days=2))    # within grace
     media = [
-        {"id": "A", "storage_path": "c/a.jpg", "archived_at": old,
+        {"id": "A", "post_id": "P1", "storage_path": "c/a.jpg", "archived_at": old,
          "archive_drive_id": "d"},                                  # eligible
-        {"id": "B", "storage_path": "c/b.jpg", "archived_at": None,
+        {"id": "B", "post_id": "P2", "storage_path": "c/b.jpg", "archived_at": None,
          "archive_drive_id": None},                                 # never archived
-        {"id": "C", "storage_path": "c/c.jpg", "archived_at": recent,
+        {"id": "C", "post_id": "P3", "storage_path": "c/c.jpg", "archived_at": recent,
          "archive_drive_id": "d"},                                  # within grace
-        {"id": "D", "storage_path": None, "archived_at": old,
+        {"id": "D", "post_id": "P4", "storage_path": None, "archived_at": old,
          "archive_drive_id": "d"},                                  # already tombstoned
     ]
     sb = _FakeSB({"media": media, "story_media": []})
@@ -291,9 +292,9 @@ def test_list_archived_purgeable_selects_only_eligible(monkeypatch, now):
 def test_list_archived_purgeable_spans_both_tables(monkeypatch, now):
     old = _iso(now - timedelta(days=30))
     sb = _FakeSB({
-        "media": [{"id": "A", "storage_path": "c/posts/a.jpg", "archived_at": old,
-                   "archive_drive_id": "d"}],
-        "story_media": [{"id": "S", "storage_path": "c/stories/s.mp4",
+        "media": [{"id": "A", "post_id": "P1", "storage_path": "c/posts/a.jpg",
+                   "archived_at": old, "archive_drive_id": "d"}],
+        "story_media": [{"id": "S", "story_id": "S1", "storage_path": "c/stories/s.mp4",
                          "archived_at": old, "archive_drive_id": "d"}],
     })
     monkeypatch.setattr(queries, "get_supabase", lambda: sb)
@@ -320,8 +321,10 @@ def test_purge_dry_run_deletes_nothing(monkeypatch):
 
 def test_purge_apply_deletes_exactly_candidates(monkeypatch):
     candidates = [
-        {"id": "A", "storage_path": "c/a.jpg", "table": "media"},
-        {"id": "S", "storage_path": "c/s.mp4", "table": "story_media"},
+        {"id": "A", "kind": "post", "item_id": "P1",
+         "storage_path": "c/a.jpg", "table": "media"},
+        {"id": "S", "kind": "story", "item_id": "S1",
+         "storage_path": "c/s.mp4", "table": "story_media"},
     ]
     calls = _patch_purge(monkeypatch, candidates)
 
@@ -346,8 +349,10 @@ def test_purge_client_filter_scopes_to_one_client(monkeypatch):
     client mid-grace) untouched. This is what lets us purge agape while
     iluminatecz waits out its 7-day grace."""
     candidates = [
-        {"id": "A", "storage_path": "agape/h/instagram/posts/x.jpg", "table": "media"},
-        {"id": "I", "storage_path": "iluminatecz/h/instagram/posts/y.jpg", "table": "media"},
+        {"id": "A", "kind": "post", "item_id": "P1",
+         "storage_path": "agape/h/instagram/posts/x.jpg", "table": "media"},
+        {"id": "I", "kind": "post", "item_id": "P2",
+         "storage_path": "iluminatecz/h/instagram/posts/y.jpg", "table": "media"},
     ]
     calls = _patch_purge(monkeypatch, candidates)
 
@@ -362,12 +367,6 @@ def test_purge_client_filter_scopes_to_one_client(monkeypatch):
 # ─────────────────────────────────────────────────────────────────────
 
 
-def _bundle(tmp_path, written, skipped) -> BundleResult:
-    zp = tmp_path / "b.zip"
-    zp.write_bytes(b"x" * 100)
-    return BundleResult(
-        zip_path=zp, written_paths=list(written), skipped=skipped, total_bytes=100
-    )
 
 
 def test_archive_aborts_on_incomplete_bundle(monkeypatch, tmp_path):
@@ -428,10 +427,10 @@ def test_skipped_media_survives_purge(monkeypatch, now):
     """A file skipped during bundling is never stamped, never purgeable, never
     deleted. This is the regression guard against deleting un-archived media."""
     media = [
-        {"id": "good", "storage_path": "c/good.jpg", "archived_at": None,
-         "archive_drive_id": None},
-        {"id": "skipped", "storage_path": "c/skipped.jpg", "archived_at": None,
-         "archive_drive_id": None},
+        {"id": "good", "post_id": "P1", "storage_path": "c/good.jpg",
+         "archived_at": None, "archive_drive_id": None},
+        {"id": "skipped", "post_id": "P2", "storage_path": "c/skipped.jpg",
+         "archived_at": None, "archive_drive_id": None},
     ]
     sb = _FakeSB({"media": media, "story_media": []})
     monkeypatch.setattr(queries, "get_supabase", lambda: sb)
@@ -558,3 +557,193 @@ def test_archive_purge_restore_round_trip(monkeypatch):
     assert row["storage_path"] == path
     assert row["archived_at"] is None
     assert row["archive_drive_id"] is None
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Item-aware summaries: item ids come from DB columns, not path positions
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_list_archived_purgeable_returns_item_id_per_table(monkeypatch, now):
+    """Each candidate carries a normalized item_id (media.post_id resp.
+    story_media.story_id) alongside id/storage_path/archive_drive_id/table."""
+    old = _iso(now - timedelta(days=30))
+    sb = _FakeSB({
+        "media": [{"id": "A", "post_id": "P1",
+                   "storage_path": "c/h/instagram/posts/2026/06/P1/0.jpg",
+                   "archived_at": old, "archive_drive_id": "d"}],
+        "story_media": [{"id": "S", "story_id": "S1",
+                         "storage_path": "c/h/instagram/stories/2026/06/30/S1.mp4",
+                         "archived_at": old, "archive_drive_id": "d"}],
+    })
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    out = queries.list_archived_purgeable(now - timedelta(days=7))
+
+    by_table = {r["table"]: r for r in out}
+    assert by_table["media"]["item_id"] == "P1"
+    assert by_table["media"]["kind"] == "post"
+    assert by_table["story_media"]["item_id"] == "S1"
+    assert by_table["story_media"]["kind"] == "story"
+    # Existing keys are preserved.
+    assert by_table["media"]["id"] == "A"
+    assert by_table["media"]["storage_path"] == "c/h/instagram/posts/2026/06/P1/0.jpg"
+    assert by_table["media"]["archive_drive_id"] == "d"
+
+
+def test_build_bundle_written_items_parallel_to_written_paths(monkeypatch, tmp_path):
+    """build_bundle records (kind, item_id, path) per WRITTEN file, in the same
+    order as written_paths: kind "post" for media rows (item_id=post_id),
+    "story" for story_media rows (item_id=story_id). Skipped downloads appear
+    in neither list."""
+    monkeypatch.setattr(mcb, "DEFAULT_OUT_DIR", tmp_path)
+    monkeypatch.setattr(mcb.queries, "get_client_id_by_slug", lambda s: "client-1")
+    monkeypatch.setattr(
+        mcb.queries, "list_accounts_for_client", lambda cid: [{"id": "acc-1"}]
+    )
+    monkeypatch.setattr(mcb.queries, "list_posts_in_period", lambda *a: [{"id": "post-1"}])
+    monkeypatch.setattr(mcb.queries, "list_stories_in_period", lambda *a: [{"id": "story-1"}])
+    media_rows = [
+        {"storage_path": "c/h/instagram/posts/2026/06/post-1/0.jpg", "post_id": "post-1"},
+        {"storage_path": "c/h/instagram/posts/2026/06/post-1/skipped.jpg", "post_id": "post-1"},
+        {"storage_path": "c/h/instagram/posts/2026/06/post-1/1.jpg", "post_id": "post-1"},
+    ]
+    story_rows = [
+        {"storage_path": "c/h/instagram/stories/2026/06/30/story-1.mp4", "story_id": "story-1"},
+    ]
+    monkeypatch.setattr(mcb.queries, "list_media_for_posts", lambda ids: media_rows)
+    monkeypatch.setattr(mcb.queries, "list_story_media_for_stories", lambda ids: story_rows)
+
+    def fake_download(path):
+        if path.endswith("skipped.jpg"):
+            raise RuntimeError("download failed")
+        return (b"x" * 10, "image/jpeg")
+
+    monkeypatch.setattr(mcb, "download_from_storage", fake_download)
+
+    start = datetime(2026, 5, 1, tzinfo=UTC)
+    end = datetime(2026, 5, 31, 23, 59, 59, tzinfo=UTC)
+    result = mcb.build_bundle("test-client", start, end)
+
+    assert result.written_items == [
+        ("post", "post-1", "c/h/instagram/posts/2026/06/post-1/0.jpg"),
+        ("post", "post-1", "c/h/instagram/posts/2026/06/post-1/1.jpg"),
+        ("story", "story-1", "c/h/instagram/stories/2026/06/30/story-1.mp4"),
+    ]
+    # Parallel to written_paths: same length, same order.
+    assert [it[2] for it in result.written_items] == result.written_paths
+    assert result.skipped == 1
+
+
+def test_archive_breakdown_from_written_items(monkeypatch, tmp_path):
+    """archive_client summarizes bundle.written_items, so the Telegram breakdown
+    counts distinct column-derived items even on a path layout the old
+    positional parser misread (extra 'slides' directory level)."""
+    zp = tmp_path / "b.zip"
+    zp.write_bytes(b"x" * 100)
+    written_paths = [
+        "agape/agapeslovensko/tiktok/posts/2026/06/slides/P1/0.jpg",
+        "agape/agapeslovensko/tiktok/posts/2026/06/slides/P1/1.jpg",
+        "agape/agapeslovensko/tiktok/posts/2026/06/slides/P2/0.jpg",
+        "agape/agapeslovensko/instagram/stories/2026/06/30/S1.mp4",
+    ]
+    written_items = [
+        ("post", "P1", written_paths[0]),
+        ("post", "P1", written_paths[1]),
+        ("post", "P2", written_paths[2]),
+        ("story", "S1", written_paths[3]),
+    ]
+    bundle = BundleResult(
+        zip_path=zp, skipped=0, total_bytes=100, written_items=written_items,
+    )
+    monkeypatch.setattr(ap, "build_bundle", lambda *a: bundle)
+    monkeypatch.setattr(
+        ap.drive, "upload_bundle", lambda slug, zp: {"id": "d1", "webViewLink": ""}
+    )
+    monkeypatch.setattr(ap.drive, "get_file_size", lambda fid: zp.stat().st_size)
+    monkeypatch.setattr(ap.queries, "stamp_archived", lambda *a, **k: 4)
+    captured: dict = {}
+    monkeypatch.setattr(
+        ap.telegram, "notify_archive_completed", lambda **kw: captured.update(kw)
+    )
+
+    ap.archive("2026-05-01", "2026-05-31", ["agape"])
+
+    # Old path-positional parsing collapsed P1+P2 into one "slides" post.
+    assert "@agapeslovensko: 2 posts, 1 story (4 files)" in captured["breakdown"]
+    assert "Total archived: 3 items, 4 files" in captured["breakdown"]
+
+
+def test_purge_breakdown_maps_table_to_kind(monkeypatch):
+    """purge summarizes (kind, item_id, storage_path) straight off the
+    candidates (kind/item_id are normalized inside list_archived_purgeable):
+    the breakdown counts distinct item_ids, not path segments."""
+    paths = [
+        "agape/agapeslovensko/tiktok/posts/2026/06/slides/P1/0.jpg",
+        "agape/agapeslovensko/tiktok/posts/2026/06/slides/P1/1.jpg",
+        "agape/agapeslovensko/tiktok/posts/2026/06/slides/P2/0.jpg",
+        "agape/agapeslovensko/instagram/stories/2026/06/30/S1.mp4",
+    ]
+    candidates = [
+        {"id": "A", "kind": "post", "item_id": "P1",
+         "storage_path": paths[0], "table": "media"},
+        {"id": "B", "kind": "post", "item_id": "P1",
+         "storage_path": paths[1], "table": "media"},
+        {"id": "C", "kind": "post", "item_id": "P2",
+         "storage_path": paths[2], "table": "media"},
+        {"id": "S", "kind": "story", "item_id": "S1",
+         "storage_path": paths[3], "table": "story_media"},
+    ]
+    calls = _patch_purge(monkeypatch, candidates)
+    captured: dict = {}
+    monkeypatch.setattr(
+        ap.telegram, "notify_purge_completed", lambda **kw: captured.update(kw)
+    )
+
+    ap.purge(grace_days=7, client=None, apply=True)
+
+    assert calls["removed"] == paths
+    assert calls["tombstoned"] == paths
+    # Old path-positional parsing collapsed P1+P2 into one "slides" post.
+    assert "@agapeslovensko: 2 posts, 1 story (4 files)" in captured["breakdown"]
+    assert "Total purged: 3 items, 4 files" in captured["breakdown"]
+
+
+def test_media_listers_select_parent_id_columns(monkeypatch):
+    """build_bundle reads row["post_id"] / row["story_id"] straight off these
+    listers; pin the select strings so a future column trim fails here instead
+    of crashing the archive cron in prod."""
+    selected: dict[str, str] = {}
+
+    class _Recorder:
+        def __init__(self, name):
+            self._name = name
+
+        def select(self, cols):
+            selected[self._name] = cols
+            return self
+
+        def in_(self, *_a):
+            return self
+
+        @property
+        def not_(self):
+            return self
+
+        def is_(self, *_a):
+            return self
+
+        def range(self, *_a):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[])
+
+    sb = SimpleNamespace(table=lambda name: _Recorder(name))
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    queries.list_media_for_posts(["p1"])
+    queries.list_story_media_for_stories(["s1"])
+
+    assert "post_id" in selected["media"]
+    assert "story_id" in selected["story_media"]

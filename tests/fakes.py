@@ -146,6 +146,21 @@ class FakeSupabase:
         return FakeQuery(self.tables.setdefault(name, []))
 
 
+def make_bundle(tmp_path, written, skipped):
+    """BundleResult factory for archive tests: one zip byte-blob, every written
+    path attributed to post P1 (item detail is exercised in dedicated tests)."""
+    from scripts.make_content_bundle import BundleResult
+
+    zp = tmp_path / "b.zip"
+    zp.write_bytes(b"x" * 100)
+    return BundleResult(
+        zip_path=zp,
+        written_items=[("post", "P1", p) for p in written],
+        skipped=skipped,
+        total_bytes=100,
+    )
+
+
 def patch_purge(monkeypatch, candidates):
     """Patch the purge seams in scripts.archive_and_purge; returns a calls dict."""
     import scripts.archive_and_purge as ap
