@@ -3,8 +3,9 @@
 Pins four pieces of not-yet-written behavior:
 
 1. `queries.record_report_run` / `queries.has_report_run` over a `report_runs`
-   table (client_slug + period_start + period_end; platform recorded but
-   ignored by the existence check).
+   table (client_slug + period_start + period_end; with `platforms` given the
+   recorded rows must cover every one — NULL platform = all-platform deck —
+   otherwise any row for the exact window passes).
 2. `publish_report` records a report run after a successful Supabase upload,
    best-effort: a recording failure must not break publishing.
 3. `archive` gains `--require-report`: a client with no recorded report for
@@ -126,6 +127,91 @@ def test_record_then_has_round_trip(monkeypatch):
 
 
 # ─────────────────────────────────────────────────────────────────────
+# 1b. per-platform gate: has_report_run(..., platforms=...)
+#
+# Spec (not yet implemented): `platforms=None`/empty keeps the legacy
+# "any row for the exact client + period" behavior. A non-empty set
+# passes iff a matching row has platform NULL (an all-platform deck),
+# or the matching rows' platform values form a superset of `platforms`.
+# ─────────────────────────────────────────────────────────────────────
+
+_JUNE = (date(2026, 6, 1), date(2026, 6, 30))
+
+
+def test_has_report_run_platforms_missing_one_is_false(monkeypatch):
+    """Only an instagram deck landed; requiring instagram+tiktok must fail."""
+    sb = _FakeSB({"report_runs": [_report_run_row(platform="instagram")]})
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    assert (
+        has_report_run("agape", *_JUNE, platforms={"instagram", "tiktok"})
+        is False
+    )
+
+
+def test_has_report_run_platforms_all_present_is_true(monkeypatch):
+    """One row per required platform (plus an extra) covers the requirement."""
+    sb = _FakeSB(
+        {
+            "report_runs": [
+                _report_run_row(platform="instagram"),
+                _report_run_row(platform="tiktok"),
+                _report_run_row(platform="facebook"),  # superset is fine
+            ]
+        }
+    )
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    assert (
+        has_report_run("agape", *_JUNE, platforms={"instagram", "tiktok"})
+        is True
+    )
+
+
+def test_has_report_run_platform_null_row_covers_all(monkeypatch):
+    """A platform=NULL row is an all-platform deck and satisfies any set."""
+    sb = _FakeSB({"report_runs": [_report_run_row(platform=None)]})
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    assert (
+        has_report_run("agape", *_JUNE, platforms={"instagram", "tiktok"})
+        is True
+    )
+
+
+def test_has_report_run_platforms_none_is_legacy(monkeypatch):
+    """Explicit platforms=None: any row for the exact period passes."""
+    sb = _FakeSB({"report_runs": [_report_run_row(platform="instagram")]})
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    assert has_report_run("agape", *_JUNE, platforms=None) is True
+
+
+def test_has_report_run_platforms_empty_is_legacy(monkeypatch):
+    """An empty set behaves like platforms=None."""
+    sb = _FakeSB({"report_runs": [_report_run_row(platform="instagram")]})
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    assert has_report_run("agape", *_JUNE, platforms=set()) is True
+
+
+def test_has_report_run_platforms_wrong_period_is_false(monkeypatch):
+    """Even an all-platform row for a different period never satisfies."""
+    sb = _FakeSB({"report_runs": [_report_run_row(platform=None)]})
+    monkeypatch.setattr(queries, "get_supabase", lambda: sb)
+
+    assert (
+        has_report_run(
+            "agape",
+            date(2026, 5, 1),
+            date(2026, 5, 31),
+            platforms={"instagram", "tiktok"},
+        )
+        is False
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
 # 2. publish_report records the run (best-effort)
 # ─────────────────────────────────────────────────────────────────────
 
@@ -222,6 +308,17 @@ _START_DT = datetime(2026, 5, 1, tzinfo=UTC)
 _END_DT = datetime(2026, 5, 31, 23, 59, 59, tzinfo=UTC)
 
 
+def _patch_window_platforms(monkeypatch, platforms=("instagram",)):
+    """Stub the gate's content-platform lookup — the fake clients in these
+    tests have no rows behind queries.list_window_platforms."""
+    monkeypatch.setattr(
+        ap.queries,
+        "list_window_platforms",
+        lambda slug, start, end: set(platforms),
+        raising=False,
+    )
+
+
 def _patch_archive_happy(monkeypatch, tmp_path):
     bundle = _bundle(tmp_path, ["c/a.jpg", "c/b.jpg"], 0)
     monkeypatch.setattr(ap, "build_bundle", lambda *a: bundle)
@@ -272,10 +369,11 @@ def test_archive_require_report_blocks_unreported_client(monkeypatch):
     monkeypatch.setattr(
         ap.telegram, "notify_archive_failed", lambda **kw: notified.update(kw)
     )
+    _patch_window_platforms(monkeypatch)
     gate_calls: list[tuple] = []
 
-    def has_run(slug, start, end):
-        gate_calls.append((slug, start, end))
+    def has_run(slug, start, end, platforms=None):
+        gate_calls.append((slug, start, end, platforms))
         return False
 
     monkeypatch.setattr(ap.queries, "has_report_run", has_run, raising=False)
@@ -284,15 +382,18 @@ def test_archive_require_report_blocks_unreported_client(monkeypatch):
         ap.archive("2026-05-01", "2026-05-31", ["c1"], require_report=True)
 
     build.assert_not_called()
-    assert gate_calls == [("c1", date(2026, 5, 1), date(2026, 5, 31))]
+    assert gate_calls == [
+        ("c1", date(2026, 5, 1), date(2026, 5, 31), {"instagram"})
+    ]
     assert notified["client_slug"] == "c1"
     assert "no successful report" in notified["error"]
 
 
 def test_archive_require_report_passes_reported_client(monkeypatch, tmp_path):
     _bundle_obj, stamp = _patch_archive_happy(monkeypatch, tmp_path)
+    _patch_window_platforms(monkeypatch)
     monkeypatch.setattr(
-        ap.queries, "has_report_run", lambda *a: True, raising=False
+        ap.queries, "has_report_run", lambda *a, **kw: True, raising=False
     )
 
     ap.archive("2026-05-01", "2026-05-31", ["c1"], require_report=True)

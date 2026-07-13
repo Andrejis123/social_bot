@@ -6,8 +6,9 @@ semantics live in exactly one place. Tests import it as:
     from tests.fakes import FakeSupabase, patch_purge
 
 The fake actually applies the filters the production queries build (eq/in/lt/
-is-null with not_ negation, range pagination, limit, insert/update/delete), so
-invariants are exercised for real rather than asserted against a call chain.
+gte/lte/is-null with not_ negation, order, range pagination, limit, insert/
+update/delete), so invariants are exercised for real rather than asserted
+against a call chain.
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ class FakeQuery:
         self._negate_next = False
         self._range: tuple[int, int] | None = None
         self._limit: int | None = None
+        self._order: tuple[str, bool] | None = None
 
     # builders -------------------------------------------------------
     def select(self, *_a, **_k):
@@ -55,6 +57,18 @@ class FakeQuery:
         self._filters.append(("lt", col, val, False))
         return self
 
+    def gte(self, col, val):
+        self._filters.append(("gte", col, val, False))
+        return self
+
+    def lte(self, col, val):
+        self._filters.append(("lte", col, val, False))
+        return self
+
+    def order(self, col, desc: bool = False, **_k):
+        self._order = (col, desc)
+        return self
+
     def is_(self, col, _val):  # only ever called with "null"
         self._filters.append(("isnull", col, None, self._negate_next))
         self._negate_next = False
@@ -83,6 +97,12 @@ class FakeQuery:
             elif op == "lt":
                 v = row.get(col)
                 ok = v is not None and v < arg
+            elif op == "gte":
+                v = row.get(col)
+                ok = v is not None and v >= arg
+            elif op == "lte":
+                v = row.get(col)
+                ok = v is not None and v <= arg
             elif op == "isnull":
                 ok = row.get(col) is None
             else:  # pragma: no cover
@@ -107,6 +127,9 @@ class FakeQuery:
             for r in matched:
                 self._rows.remove(r)
         else:
+            if self._order is not None:
+                col, desc = self._order
+                matched = sorted(matched, key=lambda r: r.get(col), reverse=desc)
             if self._range is not None:
                 start, stop = self._range
                 matched = matched[start : stop + 1]

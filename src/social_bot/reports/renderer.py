@@ -52,6 +52,7 @@ from .data import (
     PostRow,
     ReportData,
     load_report_data,
+    reel_term,
 )
 from .layouts import (
     CategoryItem,
@@ -522,15 +523,17 @@ def _build_intro_body(
 # ─────────────────────────────────────────────────────────────────────
 
 def _build_overview_metrics(account: AccountData) -> list[tuple]:
-    """5 circles: Total posts including reels / Reels / Stories / Likes / Comments.
+    """5 circles: Total posts including reels / Reels / Stories / Likes / Comments
+    (reels-terminology per platform, see data.reel_term).
 
     First circle label spells out the relationship explicitly so the user
     isn't left guessing whether reels are double-counted (they are).
     """
+    term = reel_term(account.platform)
     total_posts = account.total_posts + account.total_reels
     return [
-        ("Total posts including reels", format_metric(total_posts)),
-        ("Reels", format_metric(account.total_reels)),
+        (f"Total posts including {term}", format_metric(total_posts)),
+        (term.capitalize(), format_metric(account.total_reels)),
         ("Stories", format_metric(account.total_stories)),
         ("Total Likes", format_metric(account.total_likes)),
         ("Total Comments", format_metric(account.total_comments)),
@@ -645,7 +648,11 @@ def _build_summary_cards(
     else:
         volume_caption = "No activity in the period."
 
-    reels_aux = f"including {account.total_reels} reels" if account.total_reels else ""
+    reels_aux = (
+        f"including {account.total_reels} {reel_term(account.platform)}"
+        if account.total_reels
+        else ""
+    )
     volume = MetricCard(
         label="Volume",
         value=f"{total_posts} posts",

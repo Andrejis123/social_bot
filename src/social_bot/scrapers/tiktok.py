@@ -70,9 +70,10 @@ class TikTokScraper:
         Args:
             since: ISO date string - only return posts on or after this date.
             until: ISO date string - upper date bound, mapped to the actor's
-                `newestPostDate`. The actor's schema words it as "published
-                before [date]", so the boundary day may be EXCLUSIVE (unlike
-                the inclusive IG contract) - unverified against a real run.
+                `newestPostDate`. Verified INCLUSIVE of the boundary day
+                against a real run (2026-07-13: filter 2026-07-11 returned a
+                2026-07-11T08:01Z post) - same contract as IG, despite the
+                actor schema's "published before [date]" wording.
                 Both filters use the actor's date add-on (paid, but cheaper
                 than over-fetching and filtering locally).
         """
@@ -195,23 +196,49 @@ class TikTokScraper:
 
 
 def _post_media(raw: dict[str, Any]) -> list[ScrapedMedia]:
-    """Media list for one post item. Slideshow -> one image per mediaUrls
-    entry. Video -> mp4 at slide 0 (mediaUrls first, downloadAddr fallback)
-    plus the cover at REEL_COVER_SLIDE_INDEX when present."""
+    """Media list for one post item. Slideshow -> one image per entry of
+    `slideshowImageLinks` (real actor shape: `mediaUrls` stays EMPTY on
+    slideshows; verified on a live run 2026-07-13), preferring each entry's
+    `downloadLink` (durable Apify KV copy) over `tiktokLink` (short-lived
+    signed CDN URL). A populated `mediaUrls` still wins if present. Video ->
+    mp4 at slide 0 (mediaUrls first, downloadAddr fallback) plus the cover
+    at REEL_COVER_SLIDE_INDEX when present."""
     media_urls = [u for u in (raw.get("mediaUrls") or []) if u]
     video_meta = raw.get("videoMeta") or {}
 
     if raw.get("isSlideshow"):
-        if not media_urls:
+        if media_urls:
+            return [
+                ScrapedMedia(slide_index=i, media_type="image", source_url=url)
+                for i, url in enumerate(media_urls)
+            ]
+        slides: list[ScrapedMedia] = []
+        for i, link in enumerate(raw.get("slideshowImageLinks") or []):
+            url = (
+                link.get("downloadLink") or link.get("tiktokLink")
+                if isinstance(link, dict)
+                else None
+            )
+            if url:
+                # slide_index keeps the entry's original position: compacting
+                # around a link-less entry would permanently mislabel later
+                # slides (ingest never backfills existing posts).
+                slides.append(
+                    ScrapedMedia(slide_index=i, media_type="image", source_url=url)
+                )
+            else:
+                log.warning(
+                    "tiktok.post.slideshow_slide_missing_url",
+                    platform_post_id=raw.get("id"),
+                    slide_index=i,
+                )
+        if not slides:
             # Download add-on failed/unavailable: the post row would persist
             # with zero media forever (ingest never backfills existing posts).
             log.warning(
                 "tiktok.post.no_slideshow_images", platform_post_id=raw.get("id")
             )
-        return [
-            ScrapedMedia(slide_index=i, media_type="image", source_url=url)
-            for i, url in enumerate(media_urls)
-        ]
+        return slides
 
     media: list[ScrapedMedia] = []
     video_url = media_urls[0] if media_urls else (video_meta.get("downloadAddr") or "")

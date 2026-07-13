@@ -12,8 +12,9 @@ Key behaviour:
   Defense-in-depth only; should fire on almost nothing post-2026-05-29.
 - Posts bucketed by ai_category, OrderedDict sorted by count desc — leads
   with the biggest theme in every rendered slide.
-- total_posts counts non-reels only; total_reels counts reels. They sum to
-  the grand total shown on the Overview "Posts" circle.
+- total_posts counts non-reels only; total_reels counts reels (for TikTok,
+  regular videos count as reels — see `_is_reel`). They sum to the grand
+  total shown on the Overview "Posts" circle.
 """
 from __future__ import annotations
 
@@ -91,8 +92,8 @@ class AccountData:
     posts_by_category: OrderedDict[str, list[PostRow]]   # sorted by count desc
     stories_by_category: OrderedDict[str, list[StoryRow]]
     intro_previews: list[CategoryPreviewRow]               # capped at 4
-    total_posts: int             # non-reel count (image / carousel / video)
-    total_reels: int             # reel count
+    total_posts: int             # non-reel count (see _is_reel; tiktok videos count as reels)
+    total_reels: int             # reel-equivalent count (_is_reel)
     total_stories: int
     total_likes: int
     total_comments: int
@@ -209,6 +210,24 @@ def _fetch_accounts(client_id: str) -> list[dict]:
     return rows(res)
 
 
+def _is_reel(platform: str, post_type: str) -> bool:
+    """Reel-equivalence for the Overview tile split. TikTok has no 'reel'
+    post_type — its regular videos ARE the reel format, so they count here
+    (otherwise the Reels circle reads 0 on every TikTok account). TikTok
+    slideshows stay post_type 'carousel' and land in total_posts.
+
+    Keep in lockstep with `reel_term` below: whatever this counts, that
+    labels."""
+    return post_type == "reel" or (platform == "tiktok" and post_type == "video")
+
+
+def reel_term(platform: str) -> str:
+    """Platform terminology for the short-video count of `_is_reel` (plural,
+    lowercase). 'Reels' is Instagram/Facebook jargon; TikTok posts are just
+    videos. Lives next to _is_reel so the count and its label can't drift."""
+    return "videos" if platform == "tiktok" else "reels"
+
+
 def _build_account_data(
     meta: dict, period: Period, cache_dir: Path, client_slug: str,
 ) -> AccountData:
@@ -259,6 +278,7 @@ def _build_account_data(
     posts_by_category = _bucket_posts(posts)
     stories_by_category = _bucket_stories(stories)
     intro_previews = _pick_intro_previews(posts_by_category)
+    total_reels = sum(1 for p in posts if _is_reel(platform, p.post_type))
 
     return AccountData(
         handle=handle,
@@ -267,8 +287,8 @@ def _build_account_data(
         posts_by_category=posts_by_category,
         stories_by_category=stories_by_category,
         intro_previews=intro_previews,
-        total_posts=sum(1 for p in posts if p.post_type != "reel"),
-        total_reels=sum(1 for p in posts if p.post_type == "reel"),
+        total_posts=len(posts) - total_reels,
+        total_reels=total_reels,
         total_stories=len(stories),
         total_likes=sum(p.like_count for p in posts),
         total_comments=sum(p.comment_count for p in posts),

@@ -134,14 +134,23 @@ def archive(
 
     for slug in slugs:
         try:
-            if require_report and not queries.has_report_run(
-                slug, start_dt.date(), end_dt.date()
-            ):
-                raise RuntimeError(
-                    f"no successful report recorded for {slug} "
-                    f"{start_dt.date()} .. {end_dt.date()}; archive skipped "
-                    f"(rerun the report, then archive)"
-                )
+            if require_report:
+                # Required coverage = platforms that actually have content in
+                # the window across ALL DB accounts (build_bundle's scope).
+                # A config-derived set would drift: deactivating an account
+                # drops its platform from the gate while its media stays in
+                # the bundle (a platform-NULL row = all-platform deck covers
+                # everything).
+                platforms = queries.list_window_platforms(slug, start_dt, end_dt)
+                if not queries.has_report_run(
+                    slug, start_dt.date(), end_dt.date(), platforms=platforms
+                ):
+                    raise RuntimeError(
+                        f"no successful report covering platforms "
+                        f"{sorted(platforms)} recorded for {slug} "
+                        f"{start_dt.date()} .. {end_dt.date()}; archive skipped "
+                        f"(rerun the report(s), then archive)"
+                    )
             archive_client(slug, start_dt, end_dt)
         except Exception as exc:
             log.error("archive.client_failed", client=slug, error=str(exc))

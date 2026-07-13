@@ -966,23 +966,78 @@ def record_report_run(
     )
 
 
-def has_report_run(client_slug: str, period_start: date, period_end: date) -> bool:
+def list_window_platforms(
+    client_slug: str, start: datetime, end: datetime,
+) -> set[str]:
+    """Distinct platforms with posts or stories in the window, across ALL of
+    the client's DB accounts (active or not).
+
+    This is the required-report set for the archive gate, and it deliberately
+    mirrors build_bundle's discovery scope (list_accounts_for_client + the
+    posted_at window) rather than client.yaml: a config-derived set drifts —
+    an account deactivated/removed after posting drops its platform from the
+    gate while its media stays in the bundle, and a platform activated after
+    the period would block recovery archives of old windows it has no
+    content in.
+    """
+    client_id = get_client_id_by_slug(client_slug)
+    if client_id is None:
+        return set()
+    account_ids = [a["id"] for a in list_accounts_for_client(client_id)]
+    if not account_ids:
+        return set()
+    sb = get_supabase()
+    platforms: set[str] = set()
+    for table in ("posts", "stories"):
+
+        def query(ids: list[str], table: str = table) -> Any:
+            return (
+                sb.table(table)
+                .select("platform")
+                .in_("account_id", ids)
+                .gte("posted_at", start.isoformat())
+                .lte("posted_at", end.isoformat())
+            )
+
+        platforms.update(
+            r["platform"] for r in fetch_all_chunked(query, account_ids)
+        )
+    return platforms
+
+
+def has_report_run(
+    client_slug: str,
+    period_start: date,
+    period_end: date,
+    platforms: set[str] | None = None,
+) -> bool:
     """True iff a successful report is recorded for exactly this client + window.
 
-    Platform is deliberately ignored: any successful report for the period
-    means the period was reported, which is all the archive gate needs.
+    When `platforms` is given (the archive gate passes the window's content
+    platforms, see list_window_platforms), the recorded reports must cover
+    every one of them: either a row with platform NULL (an all-platform deck)
+    or per-platform rows forming a superset. Without `platforms` — or with an
+    empty set, which the gate produces for a window with no content and thus
+    nothing at risk — any row for the exact client + window passes.
     """
     sb = get_supabase()
-    res = (
-        sb.table("report_runs")
-        .select("client_slug")
-        .eq("client_slug", client_slug)
-        .eq("period_start", period_start.isoformat())
-        .eq("period_end", period_end.isoformat())
-        .limit(1)
-        .execute()
-    )
-    return bool(rows(res))
+
+    def query() -> Any:
+        return (
+            sb.table("report_runs")
+            .select("platform")
+            .eq("client_slug", client_slug)
+            .eq("period_start", period_start.isoformat())
+            .eq("period_end", period_end.isoformat())
+        )
+
+    recorded = fetch_all(query)
+    if not recorded:
+        return False
+    if not platforms:
+        return True
+    seen = {r.get("platform") for r in recorded}
+    return None in seen or platforms <= seen
 
 
 def record_item_error(

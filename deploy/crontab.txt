@@ -26,9 +26,11 @@ SHELL=/bin/bash
 #   * No auto-retry: a skipped/failed month is NOT retried by next month's
 #     cron (the window shifts). Recovery = manually rerun report then archive
 #     with the SAME dates from the alert (gate matches exact dates).
-#   * Gate is per-client, platform-blind: an IG report satisfies the gate for
-#     ALL of the client's platforms. Fine while operation is IG-only; extend
-#     report_runs gating per platform before re-enabling FB/TikTok.
+#   * Gate is per-platform (since 2026-07-13): archive requires report_runs
+#     coverage for EVERY platform among the client's active accounts (a
+#     platform-NULL row = all-platform deck covers everything). A client with
+#     TikTok accounts needs a TikTok (or all-platform) report before its
+#     period can be archived.
 #   * Rolling 30-day windows fired monthly don't tile the calendar perfectly
 #     (a 31-day month leaves 1 unreported gap day). Matches the existing
 #     report convention; the gap media stays safely in Supabase.

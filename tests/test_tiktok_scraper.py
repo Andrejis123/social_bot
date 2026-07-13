@@ -219,6 +219,58 @@ def test_slideshow_is_carousel_with_image_per_url() -> None:
     assert all(m.slide_index != REEL_COVER_SLIDE_INDEX for m in post.media)
 
 
+def _real_slideshow_item() -> dict[str, Any]:
+    """Real 2026-07-13 clockworks capture shape: slideshow with the download
+    add-on returns empty mediaUrls and carries images in slideshowImageLinks
+    ({tiktokLink: short-lived CDN URL, downloadLink: durable Apify KV copy})."""
+    raw = _slideshow_item()
+    raw["mediaUrls"] = []
+    raw["slideshowImageLinks"] = [
+        {
+            "tiktokLink": "https://p16-sign.tiktokcdn-us.com/obj/slide-0.jpeg?x-expires=1",
+            "downloadLink": f"{_KV}/slideshow-image-redbull-20250925090019-7553949029885955350-0.jpg",
+        },
+        {
+            "tiktokLink": "https://p16-sign.tiktokcdn-us.com/obj/slide-1.jpeg?x-expires=1",
+            "downloadLink": f"{_KV}/slideshow-image-redbull-20250925090019-7553949029885955350-1.jpg",
+        },
+    ]
+    return raw
+
+
+def test_slideshow_real_shape_uses_slideshow_image_links_download_link() -> None:
+    # Bug repro (root-caused 2026-07-13): real actor slideshow items have
+    # mediaUrls == [] and images in slideshowImageLinks; current code returns
+    # zero media and the post persists forever with no images.
+    raw = _real_slideshow_item()
+    s, _ = _scraper([raw])
+    posts = s.scrape_posts("redbull")
+
+    assert len(posts) == 1
+    post = posts[0]
+    assert post.post_type == "carousel"
+    assert len(post.media) == 2
+    for i, m in enumerate(post.media):
+        assert m.slide_index == i
+        assert m.media_type == "image"
+        # Must be the durable Apify KV downloadLink, not the short-lived CDN URL.
+        assert m.source_url == raw["slideshowImageLinks"][i]["downloadLink"]
+    assert all(m.slide_index != REEL_COVER_SLIDE_INDEX for m in post.media)
+
+
+def test_slideshow_image_link_without_download_link_falls_back_to_tiktok_link() -> None:
+    raw = _real_slideshow_item()
+    del raw["slideshowImageLinks"][1]["downloadLink"]
+    s, _ = _scraper([raw])
+    posts = s.scrape_posts("redbull")
+
+    assert len(posts) == 1
+    media = posts[0].media
+    assert len(media) == 2
+    assert media[0].source_url == raw["slideshowImageLinks"][0]["downloadLink"]
+    assert media[1].source_url == raw["slideshowImageLinks"][1]["tiktokLink"]
+
+
 def test_video_without_media_urls_falls_back_to_download_addr() -> None:
     raw = _video_item()
     raw["mediaUrls"] = []
