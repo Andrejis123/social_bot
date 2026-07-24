@@ -1,0 +1,12 @@
+categories:
+  - name: Events
+    description: Posts about events the brand is attending, sponsoring, or hosting — festival partnerships, brand zones, activations, event announcements, or recaps.
+
+  - name: Collaborations
+    description: Posts featuring named partnerships with artists, influencers, celebrities, or other brands — co-branded content, joint projects, or collaborative activations.
+
+  - name: Competition
+    description: Posts promoting competitions, giveaways, sweepstakes, affiliate or referral programs, loyalty rewards, or any mechanic where followers can win something.
+
+  - name: Ongoing
+    description: Regular brand communication that does not fit the above — product content, lifestyle photography, campaigns, brand storytelling, Q&A, device features, or ongoing content themes.

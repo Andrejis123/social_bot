@@ -4,6 +4,25 @@ SHELL=/bin/bash
 # Backup of prior crontab: /opt/social-bot/crontab.backup.20260702-065044
 
 # ══════════════════════════════════════════════════════════════════════════
+# HELL ENERGY DEMO — active since 24-07-2026 (ends the scrape mothball; this
+# doubles as the mothball-exit scrape test on the cheap HikerAPI tier).
+# 2-week report interval SAT 26-07-2026 .. FRI 08-08-2026: hellenergy +
+# hellenergysk vs redbull + redbullsk + monsterenergy + semtex_energy.
+# Stories run 2x/day (12h apart). Report rendered MANUALLY after 08-08-2026;
+# archive+purge promptly after the report — 6 accounts x 2 weeks is estimated
+# 550-700 MB of the 1 GB bucket, no headroom for a second unpurged interval.
+# --since is FIXED at the interval start to avoid pre-interval backfill (no
+# Supabase headroom for 6-account history). After 09-08-2026 it can move to a
+# rolling $(date -u -d "14 days ago" +\%Y-\%m-\%d) without reaching pre-26-Jul.
+# ══════════════════════════════════════════════════════════════════════════
+0  5 * * *  /opt/social-bot/deploy/cron_wrap.sh hell-posts docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.scrape_posts --client hell --since 2026-07-26 --limit 200 >> /var/log/social-bot.log 2>&1
+0  6 * * *  /opt/social-bot/deploy/cron_wrap.sh hell-describe-posts docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.describe_posts --client hell --sleep 3 >> /var/log/social-bot.log 2>&1
+0  7 * * *  /opt/social-bot/deploy/cron_wrap.sh hell-stories-am docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.scrape_stories --client hell >> /var/log/social-bot.log 2>&1
+0  8 * * *  /opt/social-bot/deploy/cron_wrap.sh hell-describe-stories-am docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.describe_stories --client hell --sleep 3 >> /var/log/social-bot.log 2>&1
+0 19 * * *  /opt/social-bot/deploy/cron_wrap.sh hell-stories-pm docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.scrape_stories --client hell >> /var/log/social-bot.log 2>&1
+0 20 * * *  /opt/social-bot/deploy/cron_wrap.sh hell-describe-stories-pm docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.describe_stories --client hell --sleep 3 >> /var/log/social-bot.log 2>&1
+
+# ══════════════════════════════════════════════════════════════════════════
 # GO-LIVE BLOCK — the full unattended monthly cycle (report → archive →
 # purge → weekly health snapshots). ALL COMMENTED while mothballed
 # (scraping stopped 2026-07-02). To re-arm for a paying client: uncomment,

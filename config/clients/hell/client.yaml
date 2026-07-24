@@ -1,0 +1,42 @@
+slug: hell
+name: "Hell Energy Competition Monitoring"
+
+accounts:
+  # Handles verified via HikerAPI 24-07-2026. Fakes exist: hellenergyofficial,
+  # hellenergy_slovakia (<40 followers), semtexcz/semtex.cz (private persons),
+  # tigerenergy (1 follower) — do not use.
+  - platform: instagram
+    handle: "hellenergy"
+    is_owned: true
+    is_active: true
+
+  - platform: instagram
+    handle: "hellenergysk"
+    is_owned: true
+    is_active: true
+
+  - platform: instagram
+    handle: "redbull"
+    is_owned: false
+    is_active: true
+
+  - platform: instagram
+    handle: "redbullsk"
+    is_owned: false
+    is_active: true
+
+  - platform: instagram
+    handle: "monsterenergy"
+    is_owned: false
+    is_active: true
+
+  - platform: instagram
+    handle: "semtex_energy"
+    is_owned: false
+    is_active: true
+
+ai:
+  provider: gemini
+  prompt_version: "v1"
+  prompt_file: prompt.md
+  categories_file: categories.yaml
