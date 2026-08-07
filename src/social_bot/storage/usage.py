@@ -2,10 +2,11 @@
 
 Walks the Supabase Storage media bucket and sums every object's real size,
 grouped by client and by kind (posts vs stories). This is the only authoritative
-view of what occupies the 1 GB free-tier file-storage cap: `story_media` rows
-carry no `bytes` column, so the DB cannot answer "how big are the stories" — the
-bucket can. The Supabase dashboard only shows a lagging billing-period average,
-not a current point-in-time per-folder breakdown.
+view of what occupies the plan's file-storage quota (`SUPABASE_STORAGE_CAP_GB`,
+100 GB on Supabase Pro): `story_media` rows carry no `bytes` column, so the DB
+cannot answer "how big are the stories" — the bucket can. The Supabase dashboard
+only shows a lagging billing-period average, not a current point-in-time
+per-folder breakdown.
 """
 
 from __future__ import annotations
@@ -97,10 +98,18 @@ def save_storage_snapshot(b: StorageBreakdown) -> int:
     return len(payload)
 
 
-def format_storage_breakdown(b: StorageBreakdown, *, cap_gb: float = 1.0) -> str:
+def format_storage_breakdown(b: StorageBreakdown, *, cap_gb: float | None = None) -> str:
+    """Render the breakdown as markdown.
+
+    `cap_gb` defaults to the configured plan quota (`SUPABASE_STORAGE_CAP_GB`,
+    100 GB on Pro) so the percentage tracks the real plan, not the free tier.
+    """
+
     def gb(n: int) -> str:
         return f"{n / 1e9:.3f} GB"
 
+    if cap_gb is None:
+        cap_gb = get_settings().supabase_storage_cap_gb
     pct = b.total_bytes / 1e9 / cap_gb * 100 if cap_gb else 0
     by_client: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for (client, _kind), (bytes_, files) in b.by_client_kind.items():
@@ -110,8 +119,7 @@ def format_storage_breakdown(b: StorageBreakdown, *, cap_gb: float = 1.0) -> str
     lines = [
         "## Storage breakdown (bucket, point-in-time)",
         "",
-        f"**Total: {gb(b.total_bytes)} / {cap_gb:g} GB ({pct:.0f}%)** "
-        f"across {b.total_files} files",
+        f"**Total: {gb(b.total_bytes)} / {cap_gb:g} GB ({pct:.1f}%)** across {b.total_files} files",
         "",
         "| Client | Size | Files |",
         "|--------|------|-------|",
@@ -119,8 +127,6 @@ def format_storage_breakdown(b: StorageBreakdown, *, cap_gb: float = 1.0) -> str
     for client, (bytes_, files) in sorted(by_client.items(), key=lambda x: -x[1][0]):
         lines.append(f"| {client} | {gb(bytes_)} | {files} |")
     lines += ["", "| Client | Kind | Size | Files |", "|--------|------|------|-------|"]
-    for (client, kind), (bytes_, files) in sorted(
-        b.by_client_kind.items(), key=lambda x: -x[1][0]
-    ):
+    for (client, kind), (bytes_, files) in sorted(b.by_client_kind.items(), key=lambda x: -x[1][0]):
         lines.append(f"| {client} | {kind} | {gb(bytes_)} | {files} |")
     return "\n".join(lines)

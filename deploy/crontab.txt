@@ -23,6 +23,26 @@ SHELL=/bin/bash
 0 20 * * *  /opt/social-bot/deploy/cron_wrap.sh hell-describe-stories-pm docker run --rm --env-file /opt/social-bot/.env social-bot python -m scripts.describe_stories --client hell --sleep 3 >> /var/log/social-bot.log 2>&1
 
 # ══════════════════════════════════════════════════════════════════════════
+# WATERING-HOLE MONITOR — daily 09:00 UTC. Marketing tool, fully independent
+# of the scrape pipeline: no clients, no accounts, no Supabase writes.
+#
+# Reads public subreddit RSS (Reddit's JSON API is 403 from this IP and OAuth
+# needs an approved Data API application), keyword-filters, scores survivors
+# with Gemini, and files anything above threshold in the Notion "Watering Hole
+# Queue" for Andy to answer BY HAND. Nothing here ever posts to Reddit.
+#
+# Runtime is dominated by deliberate sleeping: 20s between feeds plus backoff
+# on the frequent 429s, so budget ~5 min for 5 subreddits. Cost is a handful
+# of Gemini flash calls per day.
+#
+# Note the explicit config mount: the other cron lines run bare `docker run`
+# and therefore read the config baked into the image at build time. Mounting
+# it here is what makes keyword/threshold edits in config/watering_holes.yaml
+# take effect on the next run with no rebuild.
+# ══════════════════════════════════════════════════════════════════════════
+0  9 * * *  /opt/social-bot/deploy/cron_wrap.sh watering-holes docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/config:/app/config:ro social-bot python -m scripts.watch_watering_holes >> /var/log/social-bot.log 2>&1
+
+# ══════════════════════════════════════════════════════════════════════════
 # GO-LIVE BLOCK — the full unattended monthly cycle (report → archive →
 # purge → weekly health snapshots). ALL COMMENTED while mothballed
 # (scraping stopped 2026-07-02). To re-arm for a paying client: uncomment,

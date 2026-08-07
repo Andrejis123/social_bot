@@ -30,12 +30,12 @@ class Settings(BaseSettings):
     supabase_service_key: str = Field(..., alias="SUPABASE_SERVICE_KEY")
     supabase_media_bucket: str = Field("media", alias="SUPABASE_MEDIA_BUCKET")
     supabase_reports_bucket: str = Field("reports", alias="SUPABASE_REPORTS_BUCKET")
+    # File-storage quota for the plan in use (Pro = 100 GB, Free = 1 GB).
+    supabase_storage_cap_gb: float = Field(100.0, alias="SUPABASE_STORAGE_CAP_GB")
 
     # --- Apify ---
     apify_token: str = Field(..., alias="APIFY_TOKEN")
-    apify_instagram_actor: str = Field(
-        "apify/instagram-scraper", alias="APIFY_INSTAGRAM_ACTOR"
-    )
+    apify_instagram_actor: str = Field("apify/instagram-scraper", alias="APIFY_INSTAGRAM_ACTOR")
     apify_instagram_fallback_actor: str = Field(
         "get-leads/all-in-one-instagram-scraper",
         alias="APIFY_INSTAGRAM_FALLBACK_ACTOR",
@@ -43,14 +43,10 @@ class Settings(BaseSettings):
     # Facebook posts: official Apify actor, anonymous (no cookies needed for
     # public pages — verified 2026-06-23). Restricted/age-gated pages are a
     # future cookie'd tier (Phase B).
-    apify_facebook_actor: str = Field(
-        "apify/facebook-posts-scraper", alias="APIFY_FACEBOOK_ACTOR"
-    )
+    apify_facebook_actor: str = Field("apify/facebook-posts-scraper", alias="APIFY_FACEBOOK_ACTOR")
     # TikTok posts: anonymous actor with the video/cover download add-on (media
     # URLs point at Apify key-value-store copies, so no stale-CDN chasing).
-    apify_tiktok_actor: str = Field(
-        "clockworks/tiktok-profile-scraper", alias="APIFY_TIKTOK_ACTOR"
-    )
+    apify_tiktok_actor: str = Field("clockworks/tiktok-profile-scraper", alias="APIFY_TIKTOK_ACTOR")
     apify_tiktok_story_actor: str = Field(
         "igview-owner/tiktok-story-viewer", alias="APIFY_TIKTOK_STORY_ACTOR"
     )
@@ -84,11 +80,14 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = Field(None, alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str | None = Field(None, alias="TELEGRAM_CHAT_ID")
 
+    # --- Watering-hole monitor (marketing, unrelated to the scrape pipeline) ---
+    # Notion is both the review surface and the dedup store for found threads.
+    notion_api_token: str | None = Field(None, alias="NOTION_API_TOKEN")
+    watering_hole_db_id: str | None = Field(None, alias="WATERING_HOLE_DB_ID")
+
     # --- Runtime ---
     log_level: str = Field("INFO", alias="LOG_LEVEL")
-    clients_config_dir: Path = Field(
-        REPO_ROOT / "config" / "clients", alias="CLIENTS_CONFIG_DIR"
-    )
+    clients_config_dir: Path = Field(REPO_ROOT / "config" / "clients", alias="CLIENTS_CONFIG_DIR")
 
     def client_dir(self, slug: str) -> Path:
         """Return the config folder for a client slug, or raise if missing."""

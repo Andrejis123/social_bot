@@ -68,7 +68,35 @@ python -m scripts.make_content_bundle <client_slug> <YYYY-MM-DD> <YYYY-MM-DD>
 
 # Mint a Google Drive refresh token (one-time, requires credentials.json from GCP)
 python scripts/_google_auth.py
+
+# Watering-hole monitor: find public threads worth replying to (writes to Notion)
+python -m scripts.watch_watering_holes --dry-run --limit 3   # print, write nothing
+python -m scripts.watch_watering_holes                       # queue in Notion
 ```
+
+## Watering-hole monitor
+
+A marketing tool, independent of the scraping pipeline. It polls the subreddits
+in `config/watering_holes.yaml`, keyword-filters, scores survivors with Gemini
+for how well they match a problem we solve, and files anything above the
+threshold in the Notion "Watering Hole Queue" database with a draft reply.
+
+**It never posts to Reddit.** The output is a review queue; replies are written
+and posted by a human from their own account.
+
+- Transport is public subreddit **RSS**. Reddit's JSON API returns 403 from
+  datacenter IPs (and through a residential proxy), and OAuth now requires an
+  approved Reddit Data API application. RSS is rate-limited hard, so the
+  fetcher paces itself at 20s per feed and backs off on 429. Swapping in OAuth
+  later means adding one implementation of the `ThreadSource` protocol.
+- Tune keywords, subreddits and `min_score` in `config/watering_holes.yaml`.
+  The cron line mounts `config/`, so edits apply on the next run with no
+  rebuild.
+- `--sample-dropped N` prints titles the keyword filter discarded, so you can
+  check the filter is not eating real signal.
+- Drafts are a **starting point, never send-ready**. A draft containing covert
+  advertising phrasing ("some tools can...") is flagged in the `Draft flags`
+  column and must be rewritten before it goes anywhere near Reddit.
 
 ## Adding a new client
 

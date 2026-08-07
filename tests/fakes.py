@@ -12,6 +12,7 @@ against a call chain.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 
@@ -159,6 +160,28 @@ def make_bundle(tmp_path, written, skipped):
         skipped=skipped,
         total_bytes=100,
     )
+
+
+def make_thread(**overrides):
+    """Thread factory for the watering-hole monitor tests.
+
+    Defaults are a plausible reddit thread; pass keyword overrides for the one
+    field a test cares about.
+    """
+    from social_bot.monitor.sources import Thread
+
+    fields = {
+        "external_id": "t3_abc123",
+        "source": "reddit",
+        "channel": "marketing",
+        "title": "How do you track what competitors post",
+        "body": "we do it by hand every month and it eats a whole day",
+        "url": "https://www.reddit.com/r/marketing/comments/abc123/x/",
+        "author": "/u/someone",
+        "created_at": datetime(2026, 8, 1, 9, 0, tzinfo=UTC),
+    }
+    fields.update(overrides)
+    return Thread(**fields)  # type: ignore[arg-type]
 
 
 def patch_purge(monkeypatch, candidates):

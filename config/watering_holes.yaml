@@ -1,0 +1,82 @@
+# Watering-hole monitor — subreddits + keyword sets.
+#
+# config/ is volume-mounted on the VPS, so edits here take effect on the next
+# cron run with NO image rebuild. Tune keywords and thresholds from here.
+#
+# Two-stage filter: a thread must first hit `any` (cheap keyword prefilter,
+# free), and only survivors are sent to Gemini for a relevance score 0-100.
+# Rows land in Notion at or above `min_score`. Raise the threshold if the
+# queue is noisy, lower it if it is empty.
+
+reddit:
+  # Polled newest-first via each subreddit's public RSS feed. Keep this list
+  # short: Reddit rate-limits anonymous feed reads hard (roughly half of the
+  # requests 429 at 20s spacing), so every extra subreddit costs retry time.
+  subreddits:
+    - marketing
+    - agency
+    - smallbusiness
+    - socialmedia
+    - PPC
+  # Only consider threads newer than this. The cron runs daily, so 2 days
+  # gives one full run of overlap as a safety net against a missed run.
+  max_age_hours: 48
+
+# Keyword sets. `project` tags the Notion row so one queue can serve several
+# projects. Social_Bot only for v1 (Andy's call 01-08-2026); the Apify_Actor
+# set is the intended second entry when that project wants in.
+keyword_sets:
+  - project: Social_Bot
+    # Stage 1: a thread must contain at least one `any` term (case-insensitive,
+    # title + body). Deliberately broad — Gemini does the real judging.
+    any:
+      - competitor
+      - competitors
+      - competitive analysis
+      - instagram story
+      - instagram stories
+      - story archive
+      - social media report
+      - social report
+      - client report
+      - reporting tool
+      - monitor competitor
+      - track competitor
+      - competitor content
+      - social listening
+      - content audit
+      - benchmark competitors
+      - sprout social
+      - metricool
+      - hootsuite
+      - later.com
+      - brandwatch
+    # Stage 1b: a thread is dropped outright if it contains any of these,
+    # regardless of `any` hits. Kills the biggest recurring noise sources.
+    none:
+      - hiring
+      - "for hire"
+      - upwork
+      - fiverr
+      - "my resume"
+      - salary
+      - internship
+    min_score: 65
+
+# What the drafted reply must sound like. Reddit punishes obvious LLM prose
+# harder than any other surface, and a flagged reply damages the account we
+# are trying to age — these are requirements, not polish.
+draft:
+  max_sentences: 4
+  # Passed verbatim into the prompt.
+  voice: >-
+    Casual Reddit commenter who happens to know this niche well. Lowercase
+    sentence starts are fine. No greeting, no sign-off, no bullet points, no
+    bold text, no em-dashes, no rhetorical questions back to the poster, no
+    "great question", no three-item lists. Answer the actual question with
+    something concretely useful. Never pitch, never mention building or
+    selling anything. On tools you have exactly two allowed options: name a
+    specific existing tool outright, or mention no tool at all. Vague gestures
+    like "some tools can do this", "certain tools", "there are tools that" are
+    FORBIDDEN. That phrasing is the standard shape of covert advertising, it
+    is transparent to Reddit users, and it gets accounts banned.

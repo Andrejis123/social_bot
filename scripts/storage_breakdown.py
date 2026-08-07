@@ -1,7 +1,7 @@
 """Storage usage breakdown: `python -m scripts.storage_breakdown`.
 
 Walks the Supabase Storage media bucket and prints a point-in-time breakdown of
-what occupies the 1 GB free-tier cap, by client and by kind (posts vs stories).
+what occupies the plan's storage quota, by client and by kind (posts vs stories).
 The only authoritative answer to "what is eating my storage", since story media
 carries no size column in the DB and the dashboard shows only a lagging average.
 """

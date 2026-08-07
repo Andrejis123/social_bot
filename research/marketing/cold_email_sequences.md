@@ -1,8 +1,10 @@
 # Cold email sequences - Ireland push (draft v1, 28-07-2026)
 
-Sender identity: `[BRAND]` placeholder until the naming decision lands. All
-emails send as "Andy from [BRAND]" - a person at a company, never a company
-alone. Plain text, no HTML, max one link, no attachments on first touch.
+Sender identity: **Veritic** (`veritic.net`), decided 01-08-2026. The signature
+domain below is provisional until registration: if `veritic.ie` is taken as the
+Irish-track sender instead, update the two signature blocks. All emails send as
+"Andy from Veritic" - a person at a company, never a company alone. Plain text,
+no HTML, max one link, no attachments on first touch.
 
 Personalization slots per prospect (filled from `prospects_ireland.md` + a
 2-minute look at their IG): `[FIRST_NAME]`, `[AGENCY]`, `[CLIENT_NICHE]`,
@@ -45,7 +47,7 @@ Subject: `competitor stories`
 > Worth a look at a sample for one of your clients' markets?
 >
 > Andy
-> [BRAND] - [SITE]
+> Veritic - veritic.net
 > If you'd rather not hear from me again, reply "no" and that's that.
 
 ### A2 - +4 days, proof angle
@@ -115,7 +117,7 @@ Subject: `[COMPETITOR_1] last fortnight`
 > on the next two weeks?
 >
 > Andy
-> [BRAND] - [SITE]
+> Veritic - veritic.net
 > Reply "no" if this isn't for you and I won't write again.
 
 ### B2 - +4 days, concrete-sample angle
@@ -159,8 +161,11 @@ Subject: `last one from me`
 
 ## Send playbook (machine notes)
 
-1. Domain warmup 2+ weeks before batch 1 (SPF/DKIM/DMARC, low-volume normal
-   correspondence first). BLOCKED on brand/domain decision.
+1. Brand decided 01-08-2026: Veritic. `veritic.net` free at decision time
+   (`.io`/`.ie`/`.eu`/`.sk` also free; `.com` held by an unrelated Swiss web3
+   firm). Next: register, then 2+ weeks domain warmup before batch 1
+   (SPF/DKIM/DMARC, low-volume normal correspondence first). BLOCKED on
+   registration + mailbox setup, no longer on the naming decision.
 2. Batch = 10-15/day, one track at a time, Tue-Thu mornings Irish time.
 3. Every send personalized at slot level minimum; A-track openers get a real
    [CLIENT_NICHE] from the agency's own site; B-track needs real competitor
