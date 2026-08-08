@@ -62,15 +62,17 @@ new project is for.
 Very low and mostly usage-based:
 - **Supabase Pro** USD 25/mo (upgraded 05-08-2026, 100 GB file storage). The only
   fixed subscription.
-- **DigitalOcean droplet** running the VPS, small (961 MB RAM, has been OOM-killed
+- **DigitalOcean droplet** USD 10/mo. Running the VPS, small (961 MB RAM, has been OOM-killed
   by a large archive job before).
-- **HikerAPI** pay-per-request at ~USD 0.001/req. Whole 13-day, 6-account Hell
-  demo cost ~USD 0.32. Balance was USD 90.6 for ~90k requests. **Key is shared
+- **HikerAPI** pay-per-request at ~USD 0.00069/req. Whole 13-day, 6-account Hell
+  demo cost ~USD 0.32. Around 300€ so far has been spent on balance **Key is shared
   with Apify_Actor**, so the balance is not attributable to one business.
 - **Apify** free tier, USD 5/mo of credit, used only for fallback and TikTok.
-- **Gemini** flash-tier calls, cents per month at current volume.
-- **Google Drive** on a consumer Gmail account. Flagged in the GDPR report as
-  having no DPA, which must be fixed before a first paying client.
+- **Gemini** flash-tier calls, at most 10€/mo per month at current volume.
+- **Google Drive** ~50€ year, subject to increase with inceased volume, on a consumer Gmail account. Flagged in the GDPR report as
+having no DPA, which must be fixed before a first paying client.
+
+Others: domains (30), claude (23/mo), google workspace for apify_actor (10/mo)
 
 Marginal cost of an additional client in the same vertical is close to zero,
 because the scraped dataset is shared. This matters for how revenue is modelled.
@@ -90,8 +92,8 @@ Tracked as a Medium Notion task, "GDPR paperwork pack".
 
 ## Open questions for the new project
 
-1. Where should the trade sit given Irish tax residency plus Slovak summer
-   presence, and Slovak and Irish customers on both sides?
+1. Where should the trade sit given Irish tax residency plus Slovak citizenship and summer
+   presence, and potential Slovak and Irish customers on both sides (+worldwide)?
 2. Entity type and VAT: does invoicing a Slovak municipal body change the answer?
 3. One entity for both Social_Bot and Apify_Actor, or separate?
 4. Slovak low-value procurement threshold, confirmed figure.
@@ -99,3 +101,6 @@ Tracked as a Medium Notion task, "GDPR paperwork pack".
    HikerAPI key.
 6. What Apify marketplace revenue is already being received and how it is
    currently treated.
+   
+Andys comment:
+I would preffer a single entity of course, but it is up for us to decide together based on facts, and ideally it should serve mutliple of my smaller projects, as I am a small time vibecoder. Being able to invoice is a must I think.

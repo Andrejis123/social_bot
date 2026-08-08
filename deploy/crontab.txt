@@ -43,6 +43,41 @@ SHELL=/bin/bash
 0  9 * * *  /opt/social-bot/deploy/cron_wrap.sh watering-holes docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/config:/app/config:ro social-bot python -m scripts.watch_watering_holes >> /var/log/social-bot.log 2>&1
 
 # ══════════════════════════════════════════════════════════════════════════
+# TRANSIT VERTICAL — European transit-operator peer dataset, 64 IG accounts
+# (config/clients/transit/client.yaml, evidence in
+# research/marketing/transit_peer_accounts.md).
+#
+# Andy 08-08-2026: scrape far and wide, NO backfill, stories match posts.
+# `--since` is therefore FIXED at the arm date, exactly as the hell block does
+# it, so a restart can never reach back and pull unbudgeted history. Move it
+# forward only deliberately.
+#
+# One dataset serves the whole vertical: DPB is the report subject
+# (`is_owned: true`), every other account is a peer, and the same rows resell
+# to DPMK Kosice, DPMZ Zilina, DPP Praha and the PL/HU operators.
+#
+# Cadence: posts once daily, stories TWICE daily 12h apart. Stories are the
+# differentiator and expire in 24h, so the second run is failure insurance --
+# one missed run with a single daily story scrape is a permanent hole in the
+# dataset, and there is no way to backfill it.
+#
+# 64 accounts is 10x the hell block, so the lines are spread wide rather than
+# stacked an hour apart: a scrape run walks every account sequentially and the
+# describe steps sleep between AI calls. Times are deliberately clear of the
+# hell block (05:00-08:00, 19:00-20:00) and the watering-hole run (09:00).
+#
+# Config is mounted read-only so account-list edits take effect on the next run
+# with no image rebuild. The bare `docker run` lines above read the config
+# baked into the image at build time -- do not copy that pattern here.
+# ══════════════════════════════════════════════════════════════════════════
+30  2 * * *  /opt/social-bot/deploy/cron_wrap.sh transit-posts docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/config:/app/config:ro social-bot python -m scripts.scrape_posts --client transit --since 2026-08-08 --limit 200 >> /var/log/social-bot.log 2>&1
+30  4 * * *  /opt/social-bot/deploy/cron_wrap.sh transit-describe-posts docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/config:/app/config:ro social-bot python -m scripts.describe_posts --client transit --sleep 3 >> /var/log/social-bot.log 2>&1
+30 10 * * *  /opt/social-bot/deploy/cron_wrap.sh transit-stories-am docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/config:/app/config:ro social-bot python -m scripts.scrape_stories --client transit >> /var/log/social-bot.log 2>&1
+30 12 * * *  /opt/social-bot/deploy/cron_wrap.sh transit-describe-stories-am docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/config:/app/config:ro social-bot python -m scripts.describe_stories --client transit --sleep 3 >> /var/log/social-bot.log 2>&1
+30 22 * * *  /opt/social-bot/deploy/cron_wrap.sh transit-stories-pm docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/config:/app/config:ro social-bot python -m scripts.scrape_stories --client transit >> /var/log/social-bot.log 2>&1
+30  0 * * *  /opt/social-bot/deploy/cron_wrap.sh transit-describe-stories-pm docker run --rm --env-file /opt/social-bot/.env -v /opt/social-bot/config:/app/config:ro social-bot python -m scripts.describe_stories --client transit --sleep 3 >> /var/log/social-bot.log 2>&1
+
+# ══════════════════════════════════════════════════════════════════════════
 # GO-LIVE BLOCK — the full unattended monthly cycle (report → archive →
 # purge → weekly health snapshots). ALL COMMENTED while mothballed
 # (scraping stopped 2026-07-02). To re-arm for a paying client: uncomment,

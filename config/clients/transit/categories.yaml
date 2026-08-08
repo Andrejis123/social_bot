@@ -1,0 +1,18 @@
+categories:
+  - name: Service information
+    description: Posts whose primary purpose is telling passengers what is happening on the network — line closures, diversions, timetable changes, roadworks, replacement services, delays, weather disruption, or night-service arrangements.
+
+  - name: Campaigns
+    description: Deliberate marketing or awareness campaigns with a message rather than an operational notice — ridership and ticketing promotion, safety and fare-evasion messaging, accessibility, sustainability, behaviour campaigns, seasonal or city-event campaigns, and competitions or giveaways.
+
+  - name: Fleet and infrastructure
+    description: Posts about vehicles, depots, stops, track, or technology — new tram or bus deliveries, refurbishments, construction and modernisation progress, maintenance work shown to the public, and network expansion.
+
+  - name: People and employer brand
+    description: Posts centred on staff or recruitment — driver and technician profiles, hiring notices, staff anniversaries and awards, behind-the-scenes work, and internal culture content aimed partly at potential applicants.
+
+  - name: Community and heritage
+    description: Posts building goodwill rather than conveying service or campaign messages — city partnerships and sponsorships, historic vehicles and anniversaries, holiday greetings, passenger photography, humour, and general engagement content.
+
+  - name: Ongoing
+    description: Regular communication that does not fit any category above.

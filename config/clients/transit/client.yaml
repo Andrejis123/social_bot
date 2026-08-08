@@ -1,0 +1,300 @@
+slug: transit
+name: "Transit Operator Benchmarking (European peer dataset)"
+
+# One dataset for the whole vertical: scrape these once, sell reports off it to
+# DPB, DPMK Kosice, DPMZ Zilina, DPP Praha and the PL/HU operators. Marginal
+# cost per extra client is close to zero, which is the reason this vertical is
+# worth more than the single DPB deal.
+#
+# All 64 handles resolved through HikerAPI on 07/08-08-2026: real pk, public,
+# 500+ followers, identity confirmed in full_name/bio, and a post inside the
+# last 180 days. Full evidence, IG pks, rejected handles and the story snapshot
+# live in research/marketing/transit_peer_accounts.md. Verify a handle there
+# before adding or removing one here.
+#
+# Andy 08-08-2026: scrape far and wide (HikerAPI Business tier cut per-request
+# cost, Supabase Pro removed the storage squeeze). NO backfill - posts and
+# stories both start from the arm date, at matching cadence. Stories are the
+# differentiator and cannot be backfilled at all.
+#
+# CONSTRAINT worth knowing: `accounts` is UNIQUE (platform, handle) with a NOT
+# NULL client_id, so an account belongs to exactly one client. Peers therefore
+# cannot be shared across a second client config, and a per-buyer deck needs
+# report-side account selection rather than a second client. Tracked separately.
+#
+# Rejected as dormant (do not re-add): @pmdp_plzen 01-2024, @zet_zagreb 04-2023,
+# @volanbusz 01-2025, @tussamsevilla 03-2018. Wrong-entity trap: @gvbamsterdam
+# (3.6k followers, dead since 2019) is NOT GVB - the live account is @gvb_online.
+# Fakes and squatters plus private accounts are listed in the research file.
+
+accounts:
+
+  # --- TIER 1 - core benchmarking set for the first DPB deck ---
+  - platform: instagram
+    handle: "wienerlinien"        # AT Wien Wiener Linien | 112,408f | pk 329677014
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "holding_graz"        # AT Graz Holding Graz Linien | 16,606f | pk 4707702640
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "salzburg_verkehr"        # AT Salzburg Salzburg Verkehr / Salzburg AG | 8,409f | pk 48005873305
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "pidoficialni"        # CZ Praha PID Lítačka | 33,506f | pk 1600328473
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "dppoficialni"        # CZ Praha DPP Praha | 24,123f | pk 7187423702
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "dpmbofficial"        # CZ Brno DPMB Brno | 14,502f | pk 2661073346
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "dpostrava"        # CZ Ostrava DPO Ostrava | 11,923f | pk 4085750152
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "bvg_weilwirdichlieben"        # DE Berlin BVG Berlin | 246,913f | pk 1591712214
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "muenchen.mvg"        # DE München MVG München | 27,443f | pk 57702227570
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "bkkbudapest"        # HU Budapest BKK Budapest | 28,944f | pk 456069851
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "wtp_warszawa"        # PL Warszawa ZTP / WTP Warszawa | 13,974f | pk 1603227198
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "mpk_krakow"        # PL Kraków MPK Kraków | 13,571f | pk 3113865873
+    is_owned: false
+    is_active: true
+  - platform: instagram  # report subject
+    handle: "dpbratislava"        # SK Bratislava Dopravný podnik Bratislava (DPB) | 12,087f | pk 6352227885
+    is_owned: true
+    is_active: true
+  - platform: instagram
+    handle: "dpmk_as"        # SK Košice DPMK Košice | 2,229f | pk 28619914948
+    is_owned: false
+    is_active: true
+
+  # --- TIER 2 - domestic resale targets and mid-size analogues ---
+  - platform: instagram
+    handle: "linz_ag"        # AT Linz Linz AG Linien | 7,678f | pk 1344805084
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "dpmo_official"        # CZ Olomouc DPMO Olomouc | 4,775f | pk 4040450519
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "dpmlj"        # CZ Liberec DPMLJ Liberec | 1,474f | pk 8232767280
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "uestra"        # DE Hannover üstra Hannover | 32,614f | pk 2476049902
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "hochbahn_"        # DE Hamburg Hamburger Hochbahn | 32,533f | pk 61535897824
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "ssb_ag"        # DE Stuttgart SSB Stuttgart | 31,609f | pk 3154390465
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "kvbag"        # DE Köln KVB Köln | 28,483f | pk 1183584038
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "rheinbahn"        # DE Düsseldorf Rheinbahn Düsseldorf | 23,070f | pk 1428505464
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "vagnuernberg"        # DE Nürnberg VAG Nürnberg | 16,972f | pk 5961926711
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "bkvzrt_official"        # HU Budapest BKV Zrt. | 6,190f | pk 8577531525
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "mpk_lodz"        # PL Łódź MPK Łódź | 9,177f | pk 2195493106
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "mpkwroclaw"        # PL Wrocław MPK Wrocław | 8,607f | pk 2280583631
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "gaitgdansk"        # PL Gdańsk Gdańskie Autobusy i Tramwaje | 7,134f | pk 506219044
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "mpkpoznan_official"        # PL Poznań MPK Poznań | 3,569f | pk 47008082797
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "ids_bk"        # SK Bratislava IDS BK | 1,400f | pk 20525162815
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "mhdzilina"        # SK Žilina DPMŽ Žilina | 1,268f | pk 17135116262
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "dpmp_as"        # SK Prešov DPMP Prešov | 596f | pk 74028947305
+    is_owned: false
+    is_active: true
+
+  # --- TIER 3 - wider European operators and authorities ---
+  - platform: instagram
+    handle: "stibmivb"        # BE Brussel STIB-MIVB | 39,549f | pk 573282270
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "delijn"        # BE Vlaanderen De Lijn | 22,517f | pk 722897200
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "vbzzuerilinie"        # CH Zürich VBZ Zürich | 12,312f | pk 1973114210
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "metroen_kbh"        # DK København Metroen København | 16,694f | pk 636070614
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "movia.dk"        # DK København Movia | 3,552f | pk 14758712185
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "metro_madrid"        # ES Madrid Metro de Madrid | 185,974f | pk 3956537359
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "tmb_bcn"        # ES Barcelona TMB Barcelona | 51,274f | pk 4739168866
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "emtmadrid"        # ES Madrid EMT Madrid | 23,279f | pk 178123794
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "metro_bilbao"        # ES Bilbao Metro Bilbao | 10,983f | pk 1736172814
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "hsljoukkoliikenne"        # FI Helsinki HSL / HRT | 17,215f | pk 1664036997
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "ratp"        # FR Paris RATP | 113,159f | pk 2266675173
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "idfmobilites"        # FR Paris Île-de-France Mobilités | 50,873f | pk 27664743982
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "oasa.gr"        # GR Athens OASA Athens | 3,424f | pk 3585611142
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "dublinbusnews"        # IE Dublin Dublin Bus | 19,392f | pk 3975579242
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "transportforireland"        # IE Dublin Transport for Ireland | 11,200f | pk 7264868662
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "atm_milano"        # IT Milano ATM Milano | 63,458f | pk 449456096
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "atacroma"        # IT Roma ATAC Roma | 59,470f | pk 3192867997
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "rigassatiksme"        # LV Rīga Rīgas satiksme | 3,247f | pk 31936987
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "gvb_online"        # NL Amsterdam GVB Amsterdam | 3,755f | pk 71302907581
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "ruter_no"        # NO Oslo Ruter | 12,886f | pk 623438507
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "carrismetropolitana"        # PT Lisboa Carris Lisboa | 17,910f | pk 52593421342
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "sl.storstockholm"        # SE Stockholm SL Storstockholm | 13,074f | pk 19371438199
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "iettistanbul"        # TR Istanbul IETT Istanbul | 3,182f | pk 52009105249
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "transportforlondon"        # UK London Transport for London | 360,940f | pk 242796675
+    is_owned: false
+    is_active: true
+
+  # --- TIER 3 - national rail, context only (not city-transit peers) ---
+  - platform: instagram
+    handle: "unsereoebb"        # AT national ÖBB | 104,318f | pk 794776557
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "sbbcffffs"        # CH national SBB | 165,885f | pk 247922960
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "ceskedrahy"        # CZ national České dráhy | 53,222f | pk 1908717348
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "deutschebahn"        # DE national Deutsche Bahn | 531,797f | pk 485977342
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "mavcsoport.hu"        # HU national MÁV-csoport | 21,999f | pk 8206853421
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "irishrail"        # IE national Irish Rail | 35,857f | pk 3252209481
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "ns_online"        # NL national NS | 85,847f | pk 1912223876
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "pkp_intercity"        # PL national PKP Intercity | 48,774f | pk 2027816627
+    is_owned: false
+    is_active: true
+  - platform: instagram
+    handle: "regiojet"        # SK national RegioJet | 35,746f | pk 363828114
+    is_owned: false
+    is_active: true
+
+ai:
+  provider: gemini
+  prompt_version: "v1"
+  prompt_file: prompt.md
+  categories_file: categories.yaml
